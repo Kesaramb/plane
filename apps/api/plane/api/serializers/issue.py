@@ -147,24 +147,11 @@ class IssueSerializer(BaseSerializer):
         ):
             raise serializers.ValidationError("Estimate point is not valid please pass a valid estimate_point_id")
 
-        # Fork rule: an item cannot enter a "started" state without a time
-        # allocation — capacity monitoring depends on in-flight work carrying
-        # real hours. Backlog/todo capture stays friction-free.
-        new_state = data.get("state")
-        if new_state is not None and getattr(new_state, "group", None) == "started":
-            if "estimate_point" in data:
-                has_estimate = data.get("estimate_point") is not None
-            else:
-                has_estimate = bool(self.instance and self.instance.estimate_point_id)
-            # Only enforce when the project actually has an estimate system; a project
-            # without one cannot express hours, and blocking it would be a dead end.
-            project_has_estimates = Project.objects.filter(
-                id=self.context.get("project_id"), estimate__isnull=False
-            ).exists()
-            if project_has_estimates and not has_estimate:
-                raise serializers.ValidationError(
-                    "Time allocation required: set an estimate (hours) on this item before moving it to In Progress."
-                )
+        # Fork note: an earlier rule required an estimate before an item could enter
+        # a "started" state, to keep capacity data honest. It was removed because it
+        # blocked routine work — including announcement items — and Plane's UI does
+        # not surface the reason. Estimates stay optional; the manager dashboard
+        # reports estimate coverage and falls back to hours assumed from priority.
 
         return data
 
