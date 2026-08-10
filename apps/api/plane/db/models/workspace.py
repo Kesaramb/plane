@@ -262,6 +262,14 @@ class Team(BaseModel):
     name = models.CharField(max_length=255, verbose_name="Team Name")
     description = models.TextField(verbose_name="Team Description", blank=True)
     workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="workspace_team")
+    # Fork addition: manager / team-lead who owns this group
+    lead = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="led_teams",
+        null=True,
+        blank=True,
+    )
     logo_props = models.JSONField(default=dict)
 
     def __str__(self):
@@ -280,6 +288,34 @@ class Team(BaseModel):
         verbose_name = "Team"
         verbose_name_plural = "Teams"
         db_table = "teams"
+        ordering = ("-created_at",)
+
+
+class TeamMember(BaseModel):
+    """Fork addition: membership of a user in a Team, with an in-team role."""
+
+    TEAM_ROLE_CHOICES = (("lead", "Lead"), ("member", "Member"))
+
+    team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="members")
+    member = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="team_memberships")
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="workspace_team_members")
+    role = models.CharField(max_length=20, choices=TEAM_ROLE_CHOICES, default="member")
+
+    def __str__(self):
+        return f"{self.member.email} in {self.team.name}"
+
+    class Meta:
+        unique_together = ["team", "member", "deleted_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["team", "member"],
+                condition=models.Q(deleted_at__isnull=True),
+                name="team_member_unique_when_deleted_at_null",
+            )
+        ]
+        verbose_name = "Team Member"
+        verbose_name_plural = "Team Members"
+        db_table = "team_members"
         ordering = ("-created_at",)
 
 

@@ -193,6 +193,20 @@ class IssueCreateSerializer(BaseSerializer):
         ):
             raise serializers.ValidationError("Estimate point is not valid please pass a valid estimate_point_id")
 
+        # Fork rule: an item cannot enter a "started" state without a time
+        # allocation — capacity monitoring depends on in-flight work carrying
+        # real hours. Backlog/todo capture stays friction-free.
+        new_state = attrs.get("state")
+        if new_state is not None and getattr(new_state, "group", None) == "started":
+            if "estimate_point" in attrs:
+                has_estimate = attrs.get("estimate_point") is not None
+            else:
+                has_estimate = bool(self.instance and self.instance.estimate_point_id)
+            if not has_estimate:
+                raise serializers.ValidationError(
+                    "Time allocation required: set an estimate (hours) on this item before moving it to In Progress."
+                )
+
         return attrs
 
     def create(self, validated_data):
