@@ -26,6 +26,7 @@ from plane.db.models import (
     State,
     User,
     EstimatePoint,
+    Project,
 )
 from plane.utils.content_validator import (
     validate_html_content,
@@ -155,7 +156,12 @@ class IssueSerializer(BaseSerializer):
                 has_estimate = data.get("estimate_point") is not None
             else:
                 has_estimate = bool(self.instance and self.instance.estimate_point_id)
-            if not has_estimate:
+            # Only enforce when the project actually has an estimate system; a project
+            # without one cannot express hours, and blocking it would be a dead end.
+            project_has_estimates = Project.objects.filter(
+                id=self.context.get("project_id"), estimate__isnull=False
+            ).exists()
+            if project_has_estimates and not has_estimate:
                 raise serializers.ValidationError(
                     "Time allocation required: set an estimate (hours) on this item before moving it to In Progress."
                 )

@@ -43,6 +43,34 @@ from plane.db.models.intake import IntakeIssueStatus
 from plane.utils.host import base_host
 
 
+HOURS_ESTIMATE_POINTS = ["1", "2", "4", "6", "8", "16"]
+
+
+def seed_hours_estimate(project, actor=None):
+    """Fork addition: give a project the Hours estimate this fork's rules require."""
+    from plane.db.models import Estimate, EstimatePoint
+
+    if project.estimate_id:
+        return None
+    estimate = Estimate.objects.filter(project=project, name="Hours").first()
+    if not estimate:
+        estimate = Estimate.objects.create(
+            project=project, name="Hours", type="points", last_used=True, created_by=actor
+        )
+        EstimatePoint.objects.bulk_create(
+            [
+                EstimatePoint(
+                    estimate=estimate, project=project, workspace=project.workspace,
+                    key=key, value=value, created_by=actor,
+                )
+                for key, value in enumerate(HOURS_ESTIMATE_POINTS)
+            ]
+        )
+    project.estimate = estimate
+    project.save(update_fields=["estimate"])
+    return estimate
+
+
 class ProjectViewSet(BaseViewSet):
     serializer_class = ProjectListSerializer
     model = Project
@@ -288,6 +316,11 @@ class ProjectViewSet(BaseViewSet):
                     for state in DEFAULT_STATES
                 ]
             )
+
+            # Fork addition: seed the "Hours" estimate system. This fork requires a
+            # time allocation before an item may enter an In Progress state, so a
+            # project created without one would have permanently unstartable work.
+            seed_hours_estimate(serializer.instance, request.user)
 
             project = self.get_queryset().filter(pk=serializer.data["id"]).first()
 
