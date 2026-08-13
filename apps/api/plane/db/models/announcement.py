@@ -43,7 +43,9 @@ class Announcement(BaseModel):
     # Optional poll. Empty options means no voting is offered.
     poll_question = models.CharField(max_length=120, blank=True)
     poll_options = models.JSONField(default=list, blank=True)
-    poll_show_results = models.BooleanField(default=True)
+    # Voters do not see the running count unless the author opts in. The tally is
+    # withheld by the API too, not merely hidden in the UI.
+    poll_show_results = models.BooleanField(default=False)
 
     link_url = models.URLField(max_length=800, blank=True)
     link_label = models.CharField(max_length=60, blank=True)

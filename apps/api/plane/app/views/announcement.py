@@ -198,12 +198,13 @@ class AnnouncementVoteEndpoint(BaseAPIView):
             deleted_at__isnull=True,
             defaults={"choice_index": idx, "choice_label": str(options[idx])[:60]},
         )
-        votes = AnnouncementVote.objects.filter(announcement=announcement, deleted_at__isnull=True)
-        tally = [votes.filter(choice_index=i).count() for i in range(len(options))]
-        return Response(
-            {"ok": True, "your_choice": idx, "tally": tally, "total": sum(tally)},
-            status=status.HTTP_200_OK,
-        )
+        payload = {"ok": True, "your_choice": idx}
+        if announcement.poll_show_results:
+            votes = AnnouncementVote.objects.filter(announcement=announcement, deleted_at__isnull=True)
+            tally = [votes.filter(choice_index=i).count() for i in range(len(options))]
+            payload["tally"] = tally
+            payload["total"] = sum(tally)
+        return Response(payload, status=status.HTTP_200_OK)
 
 
 class AnnouncementListEndpoint(BaseAPIView):

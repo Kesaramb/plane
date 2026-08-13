@@ -13,7 +13,7 @@
  */
 (function () {
   "use strict";
-  var VERSION = "1.3";
+  var VERSION = "1.4";
   var HEIGHT = 40;
   var POLL_MS = 60000;
   var host, shadow, current = [], reported = {}, myVote = {}, tallies = {};
@@ -126,7 +126,7 @@
           .then(function (res) {
             if (!res) return;
             myVote[id] = res.your_choice;
-            tallies[id] = res.tally;
+            if (res.tally) tallies[id] = res.tally;
             render(current);
           }).catch(function () {});
       });
@@ -157,7 +157,7 @@
       out += "<button class='opt' aria-pressed='" + (mine ? "true" : "false") +
              "' data-vote='" + esc(a.id) + "' data-choice='" + i + "'><span>" + esc(opts[i]) + "</span></button>";
     }
-    if (t && a.poll_show_results !== false && voted !== undefined) {
+    if (t && t.length && a.poll_show_results === true && voted !== undefined) {
       var parts = [];
       for (var k = 0; k < opts.length; k++) parts.push(esc(opts[k]) + " " + (t[k] || 0));
       out += "<span class='tally'>" + parts.join(" \u00b7 ") + "</span>";
