@@ -244,4 +244,5 @@ from .announcement import (
     AnnouncementDismissEndpoint,
     AnnouncementManageViewSet,
     AnnouncementReceiptEndpoint,
+    AnnouncementVoteEndpoint,
 )

@@ -40,6 +40,11 @@ class Announcement(BaseModel):
         "db.Team", on_delete=models.CASCADE, related_name="announcements", null=True, blank=True
     )
 
+    # Optional poll. Empty options means no voting is offered.
+    poll_question = models.CharField(max_length=120, blank=True)
+    poll_options = models.JSONField(default=list, blank=True)
+    poll_show_results = models.BooleanField(default=True)
+
     link_url = models.URLField(max_length=800, blank=True)
     link_label = models.CharField(max_length=60, blank=True)
 
@@ -141,5 +146,35 @@ class AnnouncementReceipt(BaseModel):
                 fields=["announcement", "user"],
                 condition=Q(deleted_at__isnull=True),
                 name="announcement_receipt_unique_when_deleted_at_null",
+            )
+        ]
+
+
+class AnnouncementVote(BaseModel):
+    """One vote per person per announcement, changeable.
+
+    The chosen label is snapshotted alongside its index so that editing the
+    options later cannot silently rewrite what someone actually voted for.
+    """
+
+    announcement = models.ForeignKey(Announcement, on_delete=models.CASCADE, related_name="votes")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="announcement_votes")
+    choice_index = models.PositiveSmallIntegerField()
+    choice_label = models.CharField(max_length=60)
+
+    def __str__(self):
+        return f"{self.user_id} voted {self.choice_label}"
+
+    class Meta:
+        verbose_name = "Announcement Vote"
+        verbose_name_plural = "Announcement Votes"
+        db_table = "announcement_votes"
+        ordering = ("-created_at",)
+        unique_together = ["announcement", "user", "deleted_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["announcement", "user"],
+                condition=Q(deleted_at__isnull=True),
+                name="announcement_vote_unique_when_deleted_at_null",
             )
         ]

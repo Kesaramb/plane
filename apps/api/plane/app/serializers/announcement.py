@@ -23,6 +23,9 @@ class AnnouncementSerializer(BaseSerializer):
             "is_dismissible",
             "revision",
             "author_name",
+            "poll_question",
+            "poll_options",
+            "poll_show_results",
         ]
         read_only_fields = fields
 
@@ -48,6 +51,9 @@ class AnnouncementWriteSerializer(BaseSerializer):
             "starts_at",
             "ends_at",
             "revision",
+            "poll_question",
+            "poll_options",
+            "poll_show_results",
             "workspace_slug",
             "project_id",
             "team_id",

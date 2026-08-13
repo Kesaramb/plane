@@ -12,6 +12,7 @@ from plane.db.models import (
     AnnouncementAudience,
     AnnouncementDismissal,
     AnnouncementReceipt,
+    AnnouncementVote,
     ProjectMember,
     TeamMember,
     User,
@@ -123,8 +124,20 @@ def engagement_for(announcement):
         announcement=announcement, deleted_at__isnull=True
     ).count()
     not_seen = [u.display_name or u.email for u in audience.exclude(id__in=seen_ids)[:25]]
+    votes = AnnouncementVote.objects.filter(announcement=announcement, deleted_at__isnull=True)
+    tally = []
+    for idx, label in enumerate(announcement.poll_options or []):
+        n = votes.filter(choice_index=idx).count()
+        tally.append({"index": idx, "label": label, "votes": n})
+    total_votes = sum(t["votes"] for t in tally)
+    for t in tally:
+        t["pct"] = round(100 * t["votes"] / total_votes) if total_votes else 0
+
     return {
         "audience_size": total,
+        "poll_question": announcement.poll_question,
+        "votes_total": total_votes,
+        "tally": tally,
         "seen": len(seen_ids),
         "seen_pct": round(100 * len(seen_ids) / total) if total else 0,
         "clicked": clicked,
@@ -156,6 +169,41 @@ class AnnouncementReceiptEndpoint(BaseAPIView):
                 receipt.clicked_at = now
                 receipt.save(update_fields=["clicked_at"])
         return Response({"ok": True}, status=status.HTTP_200_OK)
+
+
+class AnnouncementVoteEndpoint(BaseAPIView):
+    """Cast or change a vote. Restricted to announcements visible to the caller,
+    so the audience rules also gate who can influence the result."""
+
+    def post(self, request, pk):
+        announcement = visible_announcements(request.user).filter(pk=pk).first()
+        if not announcement:
+            # already dismissed but still voting from an open tab: allow it if the
+            # announcement targets them at all, otherwise refuse
+            candidate = Announcement.objects.filter(pk=pk, is_enabled=True).first()
+            if not candidate or not audience_users(candidate).filter(pk=request.user.id).exists():
+                return Response({"error": "Not available to you"}, status=status.HTTP_404_NOT_FOUND)
+            announcement = candidate
+        options = announcement.poll_options or []
+        try:
+            idx = int(request.data.get("choice_index"))
+        except (TypeError, ValueError):
+            return Response({"error": "choice_index required"}, status=status.HTTP_400_BAD_REQUEST)
+        if idx < 0 or idx >= len(options):
+            return Response({"error": "choice_index out of range"}, status=status.HTTP_400_BAD_REQUEST)
+
+        AnnouncementVote.objects.update_or_create(
+            announcement=announcement,
+            user=request.user,
+            deleted_at__isnull=True,
+            defaults={"choice_index": idx, "choice_label": str(options[idx])[:60]},
+        )
+        votes = AnnouncementVote.objects.filter(announcement=announcement, deleted_at__isnull=True)
+        tally = [votes.filter(choice_index=i).count() for i in range(len(options))]
+        return Response(
+            {"ok": True, "your_choice": idx, "tally": tally, "total": sum(tally)},
+            status=status.HTTP_200_OK,
+        )
 
 
 class AnnouncementListEndpoint(BaseAPIView):

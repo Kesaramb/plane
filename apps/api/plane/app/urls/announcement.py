@@ -6,6 +6,7 @@ from plane.app.views import (
     AnnouncementListEndpoint,
     AnnouncementManageViewSet,
     AnnouncementReceiptEndpoint,
+    AnnouncementVoteEndpoint,
 )
 
 urlpatterns = [
@@ -16,6 +17,7 @@ urlpatterns = [
         AnnouncementReceiptEndpoint.as_view(),
         name="announcement-receipt",
     ),
+    path("announcements/<uuid:pk>/vote/", AnnouncementVoteEndpoint.as_view(), name="announcement-vote"),
     path(
         "announcements/manage/",
         AnnouncementManageViewSet.as_view({"get": "list", "post": "create"}),
