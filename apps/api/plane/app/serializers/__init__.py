@@ -133,3 +133,5 @@ from .draft import (
     DraftIssueSerializer,
     DraftIssueDetailSerializer,
 )
+
+from .announcement import AnnouncementSerializer, AnnouncementWriteSerializer

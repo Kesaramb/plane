@@ -78,6 +78,12 @@ from .workspace import (
     Team,
     TeamMember,
 )
+from .announcement import (
+    Announcement,
+    AnnouncementAudience,
+    AnnouncementDismissal,
+    AnnouncementLevel,
+)
 
 from .favorite import UserFavorite
 

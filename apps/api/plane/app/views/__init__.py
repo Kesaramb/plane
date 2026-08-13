@@ -238,3 +238,9 @@ from .notification.base import MarkAllReadNotificationViewSet
 from .user.base import AccountEndpoint, ProfileEndpoint, UserSessionEndpoint
 
 from .timezone.base import TimezoneEndpoint
+
+from .announcement import (
+    AnnouncementListEndpoint,
+    AnnouncementDismissEndpoint,
+    AnnouncementManageViewSet,
+)
