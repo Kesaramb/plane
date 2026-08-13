@@ -11,8 +11,10 @@ from plane.db.models import (
     Announcement,
     AnnouncementAudience,
     AnnouncementDismissal,
+    AnnouncementReceipt,
     ProjectMember,
     TeamMember,
+    User,
     WorkspaceMember,
 )
 from plane.license.models import InstanceAdmin
@@ -36,14 +38,19 @@ def visible_announcements(user):
     team_ids = TeamMember.objects.filter(member=user, deleted_at__isnull=True).values_list("team_id", flat=True)
 
     audience = (
-        Q(audience=AnnouncementAudience.INSTANCE)
-        | Q(audience=AnnouncementAudience.WORKSPACE, workspace_id__in=workspace_ids)
+        Q(audience=AnnouncementAudience.WORKSPACE, workspace_id__in=workspace_ids)
         | Q(audience=AnnouncementAudience.PROJECT, project_id__in=project_ids)
         | Q(audience=AnnouncementAudience.TEAM, team_id__in=team_ids)
         # a team's lead sees their own team's announcements even if they were
         # never added as an explicit member
         | Q(audience=AnnouncementAudience.TEAM, team__lead=user)
     )
+    # "Everyone on the instance" still means everyone who actually works here:
+    # an active member (not a guest) of at least one workspace, and not a bot.
+    if not getattr(user, "is_bot", False) and WorkspaceMember.objects.filter(
+        member=user, is_active=True, role__gte=MIN_ROLE
+    ).exists():
+        audience |= Q(audience=AnnouncementAudience.INSTANCE)
 
     # A dismissal only silences the revision it was made against, so bumping the
     # revision brings a corrected announcement back.
@@ -73,6 +80,82 @@ def visible_announcements(user):
         .order_by("severity", "-created_at")
         .distinct()
     )
+
+
+def audience_users(announcement):
+    """Every user this announcement targets — the inverse of visible_announcements().
+
+    Kept adjacent to that function on purpose: if one changes, the other must.
+    """
+    a = announcement
+    if a.audience == AnnouncementAudience.INSTANCE:
+        member_ids = WorkspaceMember.objects.filter(is_active=True, role__gte=MIN_ROLE).values_list(
+            "member_id", flat=True
+        )
+        return User.objects.filter(id__in=member_ids, is_active=True, is_bot=False).distinct()
+    if a.audience == AnnouncementAudience.WORKSPACE:
+        ids = WorkspaceMember.objects.filter(
+            workspace_id=a.workspace_id, is_active=True, role__gte=MIN_ROLE
+        ).values_list("member_id", flat=True)
+        return User.objects.filter(id__in=ids, is_active=True, is_bot=False).distinct()
+    if a.audience == AnnouncementAudience.PROJECT:
+        ids = ProjectMember.objects.filter(
+            project_id=a.project_id, is_active=True, role__gte=MIN_ROLE
+        ).values_list("member_id", flat=True)
+        return User.objects.filter(id__in=ids, is_active=True, is_bot=False).distinct()
+    # team: explicit members plus the lead, who is not necessarily a member row
+    ids = set(
+        TeamMember.objects.filter(team_id=a.team_id, deleted_at__isnull=True).values_list("member_id", flat=True)
+    )
+    if a.team and a.team.lead_id:
+        ids.add(a.team.lead_id)
+    return User.objects.filter(id__in=ids, is_active=True, is_bot=False).distinct()
+
+
+def engagement_for(announcement):
+    """Reach and engagement counts for the dashboard."""
+    audience = audience_users(announcement)
+    total = audience.count()
+    receipts = AnnouncementReceipt.objects.filter(announcement=announcement, deleted_at__isnull=True)
+    seen_ids = set(receipts.filter(seen_count__gt=0).values_list("user_id", flat=True))
+    clicked = receipts.filter(clicked_at__isnull=False).count()
+    dismissed = AnnouncementDismissal.objects.filter(
+        announcement=announcement, deleted_at__isnull=True
+    ).count()
+    not_seen = [u.display_name or u.email for u in audience.exclude(id__in=seen_ids)[:25]]
+    return {
+        "audience_size": total,
+        "seen": len(seen_ids),
+        "seen_pct": round(100 * len(seen_ids) / total) if total else 0,
+        "clicked": clicked,
+        "dismissed": dismissed,
+        "not_seen_sample": not_seen,
+    }
+
+
+class AnnouncementReceiptEndpoint(BaseAPIView):
+    """Telemetry from the banner: it was actually rendered, or its link was clicked."""
+
+    def post(self, request, pk, action):
+        if action not in ("seen", "clicked"):
+            return Response({"error": "unknown action"}, status=status.HTTP_400_BAD_REQUEST)
+        if not Announcement.objects.filter(pk=pk).exists():
+            return Response({"error": "not found"}, status=status.HTTP_404_NOT_FOUND)
+        now = timezone.now()
+        receipt, _ = AnnouncementReceipt.objects.get_or_create(
+            announcement_id=pk, user=request.user, deleted_at__isnull=True
+        )
+        if action == "seen":
+            receipt.seen_count = (receipt.seen_count or 0) + 1
+            receipt.last_seen_at = now
+            if not receipt.first_seen_at:
+                receipt.first_seen_at = now
+            receipt.save(update_fields=["seen_count", "last_seen_at", "first_seen_at"])
+        else:
+            if not receipt.clicked_at:
+                receipt.clicked_at = now
+                receipt.save(update_fields=["clicked_at"])
+        return Response({"ok": True}, status=status.HTTP_200_OK)
 
 
 class AnnouncementListEndpoint(BaseAPIView):
@@ -107,6 +190,15 @@ class AnnouncementManageViewSet(BaseViewSet):
 
     def get_queryset(self):
         return Announcement.objects.all().order_by("-created_at")
+
+    def list(self, request):
+        rows = []
+        for a in self.get_queryset()[:50]:
+            data = AnnouncementWriteSerializer(a).data
+            data["engagement"] = engagement_for(a)
+            data["author_name"] = a.author.display_name if a.author else ""
+            rows.append(data)
+        return Response(rows, status=status.HTTP_200_OK)
 
     def _may_write(self, request, audience, workspace_id):
         if InstanceAdmin.objects.filter(user=request.user).exists():

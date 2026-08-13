@@ -82,6 +82,7 @@ from .announcement import (
     Announcement,
     AnnouncementAudience,
     AnnouncementDismissal,
+    AnnouncementReceipt,
     AnnouncementLevel,
 )
 

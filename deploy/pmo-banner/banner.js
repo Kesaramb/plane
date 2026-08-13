@@ -13,9 +13,10 @@
  */
 (function () {
   "use strict";
+  var VERSION = "1.2";
   var HEIGHT = 40;
   var POLL_MS = 60000;
-  var host, shadow, current = [];
+  var host, shadow, current = [], reported = {};
 
   var COLORS = {
     info:     { light: ["#eaf2fd", "#1c5cab", "#cde2fb"], dark: ["#12233c", "#9ec5f4", "#1c3f6b"] },
@@ -82,7 +83,7 @@
           "<span class='msg'>" + esc(a.message) +
           (a.author_name ? " <span class='who'>— " + esc(a.author_name) + "</span>" : "") +
           "</span>" +
-          (a.link_url ? "<a class='cta' href='" + esc(a.link_url) + "' target='_blank' rel='noopener'>" +
+          (a.link_url ? "<a class='cta' data-id='" + esc(a.id) + "' href='" + esc(a.link_url) + "' target='_blank' rel='noopener'>" +
             esc(a.link_label || "Details") + "</a>" : "") +
           (a.is_dismissible ? "<button data-id='" + esc(a.id) + "' title='Dismiss'>&times;</button>" : "") +
           "</div>"
@@ -91,6 +92,21 @@
       "</div>";
     shadow.innerHTML = html;
     reclaimLayout(items.length);
+
+    items.forEach(function (a) {
+      if (reported[a.id]) return;          // one receipt per page load, not per re-render
+      reported[a.id] = true;
+      api("/api/announcements/" + a.id + "/seen/receipt/", { method: "POST", body: "{}" })
+        .catch(function () {});
+    });
+
+    var links = shadow.querySelectorAll("a.cta[data-id]");
+    for (var k = 0; k < links.length; k++) {
+      links[k].addEventListener("click", function (e) {
+        api("/api/announcements/" + e.currentTarget.getAttribute("data-id") + "/clicked/receipt/",
+            { method: "POST", body: "{}" }).catch(function () {});
+      });
+    }
 
     var buttons = shadow.querySelectorAll("button[data-id]");
     for (var i = 0; i < buttons.length; i++) {
@@ -115,14 +131,21 @@
     api("/api/announcements/")
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (items) {
-        if (!items) { current = []; if (shadow) { shadow.innerHTML = ""; } reclaimLayout(0); return; }
+        if (!items) {
+          window.__pmoBanner = { version: VERSION, state: "not-signed-in-or-api-error" };
+          current = []; if (shadow) { shadow.innerHTML = ""; } reclaimLayout(0); return;
+        }
         current = items;
+        window.__pmoBanner = { version: VERSION, state: items.length ? "rendered" : "none-for-this-user", count: items.length };
         render(items);
       })
-      .catch(function () { /* stay silent; never break the app */ });
+      .catch(function (e) {
+        window.__pmoBanner = { version: VERSION, state: "fetch-failed", error: String(e) };
+      });
   }
 
   function start() {
+    window.__pmoBanner = { version: VERSION, state: "starting" };
     refresh();
     setInterval(refresh, POLL_MS);
     // React re-renders <body>; put the banner back if it gets torn out

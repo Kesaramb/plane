@@ -111,3 +111,35 @@ class AnnouncementDismissal(BaseModel):
                 name="announcement_dismissal_unique_when_deleted_at_null",
             )
         ]
+
+
+class AnnouncementReceipt(BaseModel):
+    """Engagement per person per announcement: did it actually reach them.
+
+    Separate from AnnouncementDismissal because dismissal carries revision
+    semantics and is a deliberate action, while a receipt is passive telemetry.
+    """
+
+    announcement = models.ForeignKey(Announcement, on_delete=models.CASCADE, related_name="receipts")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="announcement_receipts")
+    first_seen_at = models.DateTimeField(null=True)
+    last_seen_at = models.DateTimeField(null=True)
+    seen_count = models.PositiveIntegerField(default=0)
+    clicked_at = models.DateTimeField(null=True)
+
+    def __str__(self):
+        return f"{self.user_id} saw {self.announcement_id}"
+
+    class Meta:
+        verbose_name = "Announcement Receipt"
+        verbose_name_plural = "Announcement Receipts"
+        db_table = "announcement_receipts"
+        ordering = ("-last_seen_at",)
+        unique_together = ["announcement", "user", "deleted_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["announcement", "user"],
+                condition=Q(deleted_at__isnull=True),
+                name="announcement_receipt_unique_when_deleted_at_null",
+            )
+        ]
