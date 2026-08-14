@@ -124,14 +124,29 @@ def engagement_for(announcement):
         announcement=announcement, deleted_at__isnull=True
     ).count()
     not_seen = [u.display_name or u.email for u in audience.exclude(id__in=seen_ids)[:25]]
-    votes = AnnouncementVote.objects.filter(announcement=announcement, deleted_at__isnull=True)
+    # one query for every vote, grouped in Python — not one query per option
+    votes = list(
+        AnnouncementVote.objects.filter(announcement=announcement, deleted_at__isnull=True)
+        .select_related("user")
+        .values_list("choice_index", "user__display_name", "user__email", "user_id")
+    )
+    by_choice = {}
+    voter_ids = set()
+    for idx, display_name, email, uid in votes:
+        by_choice.setdefault(idx, []).append(display_name or email)
+        voter_ids.add(uid)
     tally = []
     for idx, label in enumerate(announcement.poll_options or []):
-        n = votes.filter(choice_index=idx).count()
-        tally.append({"index": idx, "label": label, "votes": n})
+        names = sorted(by_choice.get(idx, []), key=str.lower)
+        tally.append({"index": idx, "label": label, "votes": len(names), "voters": names})
     total_votes = sum(t["votes"] for t in tally)
     for t in tally:
         t["pct"] = round(100 * t["votes"] / total_votes) if total_votes else 0
+    not_voted = (
+        [u.display_name or u.email for u in audience.exclude(id__in=voter_ids)[:25]]
+        if announcement.poll_options
+        else []
+    )
 
     return {
         "audience_size": total,
@@ -143,6 +158,7 @@ def engagement_for(announcement):
         "clicked": clicked,
         "dismissed": dismissed,
         "not_seen_sample": not_seen,
+        "not_voted_sample": not_voted,
     }
 
 
