@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quest Board</title>
+<style>
+  :root{
+    --bg:#0e0f13; --panel:#171922; --panel2:#1e2130; --line:#2a2e3f;
+    --ink:#eef1f7; --muted:#9aa3b8;
+    --xp:#5b8cff; --xp2:#8ab4ff; --gold:#f5b942; --fire:#ff7a3d; --danger:#ef5f5f; --good:#3ecf8e;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 50% -10%,#1b2033 0%,var(--bg) 60%);
+       color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh}
+  .wrap{max-width:880px;margin:0 auto;padding:26px 18px 60px}
+  a{color:inherit}
+
+  /* ---- player header ---- */
+  .hero{display:flex;align-items:center;gap:18px;margin-bottom:22px;flex-wrap:wrap}
+  .lvl{width:70px;height:70px;border-radius:18px;flex:0 0 70px;display:grid;place-items:center;
+       background:linear-gradient(160deg,#2b3350,#171b2b);border:1px solid var(--line);box-shadow:0 8px 24px rgba(0,0,0,.35)}
+  .lvl b{display:block;font-size:26px;line-height:1;color:var(--gold)}
+  .lvl span{font-size:10px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
+  .who{flex:1;min-width:220px}
+  .who h1{margin:0 0 2px;font-size:20px;font-weight:650}
+  .who .sub{color:var(--muted);font-size:13px}
+  .bar{height:12px;border-radius:99px;background:#232838;overflow:hidden;margin-top:9px;border:1px solid var(--line)}
+  .bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--xp),var(--xp2));
+         transition:width .8s cubic-bezier(.2,.8,.2,1)}
+  .streak{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);
+          border-radius:14px;padding:10px 14px}
+  .streak b{font-size:22px;color:var(--fire)}
+  .streak span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em}
+
+  /* ---- stat strip ---- */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:22px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .stat b{display:block;font-size:20px}
+  .stat span{font-size:11.5px;color:var(--muted)}
+
+  /* ---- boss ---- */
+  .boss{background:linear-gradient(135deg,#2a1620,#1a1420);border:1px solid #4a2530;border-radius:16px;
+        padding:16px 18px;margin-bottom:22px;position:relative;overflow:hidden}
+  .boss:before{content:"";position:absolute;inset:0;background:radial-gradient(400px 120px at 90% 0,rgba(239,95,95,.16),transparent)}
+  .boss .tag{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--danger);font-weight:700}
+  .boss h2{margin:6px 0 4px;font-size:17px;font-weight:650}
+  .boss .meta{color:var(--muted);font-size:12.5px}
+
+  /* ---- quests ---- */
+  h3.sec{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:26px 0 10px}
+  .q{display:flex;align-items:center;gap:13px;background:var(--panel);border:1px solid var(--line);
+     border-radius:13px;padding:12px 14px;margin-bottom:9px;transition:transform .15s,border-color .15s}
+  .q:hover{transform:translateX(3px);border-color:#3a4160}
+  .q.today{background:var(--panel2);border-color:#39406a}
+  .q .rank{width:26px;text-align:center;font-weight:700;color:var(--muted);font-size:13px;flex:0 0 26px}
+  .q .body{flex:1;min-width:0}
+  .q .t{font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .q .m{font-size:12px;color:var(--muted);margin-top:2px;display:flex;gap:9px;flex-wrap:wrap}
+  .pill{border-radius:99px;padding:1px 8px;font-size:11px;border:1px solid var(--line)}
+  .pill.urgent{color:#ff8b8b;border-color:#5a2a2a}
+  .pill.high{color:#ffbf7a;border-color:#5a422a}
+  .pill.late{color:var(--danger);border-color:#5a2a2a}
+  .xp{color:var(--xp2);font-weight:650;font-size:12.5px;white-space:nowrap}
+  .go{all:unset;cursor:pointer;border:1px solid var(--line);border-radius:9px;padding:7px 12px;
+      font-size:12.5px;font-weight:600;color:var(--good);white-space:nowrap}
+  .go:hover{background:rgba(62,207,142,.12);border-color:var(--good)}
+  .go[disabled]{opacity:.5;cursor:default}
+  .empty{text-align:center;color:var(--muted);padding:50px 10px}
+  .empty .big{font-size:44px}
+
+  /* ---- reward toast ---- */
+  #toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(120%);
+         background:linear-gradient(135deg,#1d2a44,#182036);border:1px solid var(--xp);color:var(--ink);
+         padding:13px 22px;border-radius:14px;font-weight:650;box-shadow:0 14px 40px rgba(0,0,0,.5);
+         opacity:0;visibility:hidden;pointer-events:none;
+         transition:transform .4s cubic-bezier(.2,.9,.2,1),opacity .3s;z-index:50}
+  #toast.show{transform:translateX(-50%) translateY(0);opacity:1;visibility:visible}
+  .lvlup{color:var(--gold)}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="empty">Loading your quests…</div></div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+var S = null;
+var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+  return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); };
+
+function api(path, opts) {
+  opts = opts || {}; opts.credentials = "include";
+  opts.headers = opts.headers || {"Content-Type": "application/json"};
+  return fetch(path, opts);
+}
+
+function toast(html, ms) {
+  var t = document.getElementById("toast");
+  t.innerHTML = html; t.classList.add("show");
+  clearTimeout(t._x); t._x = setTimeout(function () { t.classList.remove("show"); }, ms || 2600);
+}
+
+function load() {
+  api("/api/my-backlog/").then(function (r) {
+    if (r.status === 401) { location.href = "/sign-in"; return null; }
+    return r.ok ? r.json() : null;
+  }).then(function (d) { if (d) { S = d; render(); } });
+}
+
+function questRow(q, i) {
+  var late = q.overdue_days ? '<span class="pill late">' + q.overdue_days + 'd overdue</span>' : "";
+  var pri = (q.priority === "urgent" || q.priority === "high")
+    ? '<span class="pill ' + q.priority + '">' + q.priority + '</span>' : "";
+  var due = (!q.overdue_days && q.due) ? '<span>due ' + esc(q.due) + '</span>' : "";
+  var hrs = q.hours ? '<span>' + q.hours + 'h</span>' : "";
+  return '<div class="q' + (i < 3 ? ' today' : '') + '">' +
+    '<div class="rank">' + (i + 1) + '</div>' +
+    '<div class="body"><div class="t"><a href="' + esc(q.url) + '">' + esc(q.title) + '</a></div>' +
+    '<div class="m">' + pri + late + due + hrs +
+    '<span>' + esc(q.ref) + ' · ' + esc(q.project) + '</span></div></div>' +
+    '<div class="xp">+' + q.reward_xp + ' XP</div>' +
+    '<button class="go" data-done="' + esc(q.id) + '" data-xp="' + q.reward_xp + '">Complete</button>' +
+    '</div>';
+}
+
+function render() {
+  var d = S;
+  var pct = d.xp_for_next ? Math.round(100 * d.xp_into_level / d.xp_for_next) : 0;
+  var html =
+    '<div class="hero">' +
+      '<div class="lvl"><div><b>' + d.level + '</b><span>Level</span></div></div>' +
+      '<div class="who"><h1>' + esc(d.player) + '</h1>' +
+        '<div class="sub">' + d.xp_into_level + ' / ' + d.xp_for_next + ' XP to level ' + (d.level + 1) + '</div>' +
+        '<div class="bar"><i style="width:' + pct + '%"></i></div></div>' +
+      '<div class="streak"><b>' + d.streak_days + '</b><span>day<br>streak</span></div>' +
+    '</div>' +
+    '<div class="stats">' +
+      '<div class="stat"><b>' + d.open_total + '</b><span>quests remaining</span></div>' +
+      '<div class="stat"><b style="color:' + (d.overdue_total ? 'var(--danger)' : 'inherit') + '">' + d.overdue_total + '</b><span>overdue</span></div>' +
+      '<div class="stat"><b>' + d.completed_today + '</b><span>cleared today</span></div>' +
+      '<div class="stat"><b>' + d.completed_this_week + '</b><span>this week</span></div>' +
+      '<div class="stat"><b>' + d.completed_all_time + '</b><span>all time</span></div>' +
+    '</div>';
+
+  if (d.boss) {
+    html += '<div class="boss"><div class="tag">⚔ Boss fight</div>' +
+      '<h2><a href="' + esc(d.boss.url) + '">' + esc(d.boss.title) + '</a></h2>' +
+      '<div class="meta">' + esc(d.boss.ref) + ' · ' + esc(d.boss.project) + ' · <b style="color:var(--danger)">' +
+      d.boss.overdue_days + ' days overdue</b> · worth ' + d.boss.reward_xp + ' XP</div></div>';
+  }
+
+  if (!d.quests.length) {
+    html += '<div class="empty"><div class="big">🎉</div><h2>Backlog clear</h2>' +
+            '<p>Nothing assigned to you is open. Enjoy it.</p></div>';
+  } else {
+    html += '<h3 class="sec">Today\'s quests</h3>' + d.quests.slice(0, 3).map(questRow).join("");
+    if (d.quests.length > 3) {
+      html += '<h3 class="sec">The rest of the backlog (' + (d.quests.length - 3) + ')</h3>' +
+              d.quests.slice(3, 40).map(function (q, i) { return questRow(q, i + 3); }).join("");
+      if (d.quests.length > 40) html += '<div class="empty">…and ' + (d.quests.length - 40) + ' more</div>';
+    }
+  }
+  document.getElementById("app").innerHTML = html;
+}
+
+document.addEventListener("click", function (e) {
+  var btn = e.target.closest("button[data-done]");
+  if (!btn) return;
+  var id = btn.getAttribute("data-done"), xp = parseInt(btn.getAttribute("data-xp"), 10);
+  var beforeLevel = S.level;
+  btn.disabled = true; btn.textContent = "…";
+  api("/api/my-backlog/" + id + "/complete/", {method: "POST", body: "{}"})
+    .then(function (r) { return r.ok ? r.json() : r.json().then(function (j) { throw new Error(j.error || "failed"); }); })
+    .then(function () {
+      toast("⚔ Quest complete &nbsp;<span style='color:var(--xp2)'>+" + xp + " XP</span>");
+      return api("/api/my-backlog/").then(function (r) { return r.json(); });
+    })
+    .then(function (d) {
+      S = d; render();
+      if (d.level > beforeLevel) {
+        setTimeout(function () { toast("🌟 <span class='lvlup'>Level " + d.level + "!</span>", 4200); }, 1200);
+      }
+    })
+    .catch(function (err) { btn.disabled = false; btn.textContent = "Complete"; toast("⚠ " + esc(err.message)); });
+});
+
+// follow Plane's theme if the user set one
+try {
+  var t = localStorage.getItem("theme");
+  if (t && t.indexOf("light") !== -1) document.documentElement.setAttribute("data-theme", "light");
+} catch (e) {}
+
+load();
+setInterval(load, 120000);
+</script>
+</body>
+</html>

@@ -13,7 +13,7 @@
  */
 (function () {
   "use strict";
-  var VERSION = "1.4";
+  var VERSION = "1.5";
   var HEIGHT = 40;
   var POLL_MS = 60000;
   var host, shadow, current = [], reported = {}, myVote = {}, tallies = {};
@@ -181,11 +181,30 @@
         }
         current = items;
         window.__pmoBanner = { version: VERSION, state: items.length ? "rendered" : "none-for-this-user", count: items.length };
-        render(items);
+        questFab();                      // signed in, so offer the Quest Board
+        if (items.length) render(items);
       })
       .catch(function (e) {
         window.__pmoBanner = { version: VERSION, state: "fetch-failed", error: String(e) };
       });
+  }
+
+  function questFab() {
+    // small persistent entry point to the personal Quest Board
+    if (document.getElementById("pmo-quest-fab")) return;
+    var a = document.createElement("a");
+    a.id = "pmo-quest-fab";
+    a.href = "/quest/";
+    a.title = "Your Quest Board";
+    a.textContent = "\ud83c\udfae";
+    a.style.cssText =
+      "position:fixed;right:18px;bottom:18px;z-index:2147482000;text-decoration:none;" +
+      "width:44px;height:44px;border-radius:14px;display:flex;align-items:center;justify-content:center;" +
+      "font-size:20px;background:#1e2130;border:1px solid #333a52;box-shadow:0 6px 20px rgba(0,0,0,.35);" +
+      "opacity:.85;transition:opacity .2s,transform .2s";
+    a.onmouseenter = function () { a.style.opacity = "1"; a.style.transform = "translateY(-2px)"; };
+    a.onmouseleave = function () { a.style.opacity = ".85"; a.style.transform = ""; };
+    document.body.appendChild(a);
   }
 
   function start() {

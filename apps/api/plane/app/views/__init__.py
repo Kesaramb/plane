@@ -246,3 +246,5 @@ from .announcement import (
     AnnouncementReceiptEndpoint,
     AnnouncementVoteEndpoint,
 )
+
+from .backlog import MyBacklogEndpoint, CompleteQuestEndpoint

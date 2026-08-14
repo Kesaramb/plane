@@ -4,6 +4,7 @@
 
 from .analytic import urlpatterns as analytic_urls
 from .announcement import urlpatterns as announcement_urls
+from .backlog import urlpatterns as backlog_urls
 from .api import urlpatterns as api_urls
 from .asset import urlpatterns as asset_urls
 from .cycle import urlpatterns as cycle_urls
@@ -46,4 +47,5 @@ urlpatterns = [
     *timezone_urls,
     *exporter_urls,
     *announcement_urls,
+    *backlog_urls,
 ]
