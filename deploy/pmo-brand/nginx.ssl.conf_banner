@@ -1,0 +1,28 @@
+# HTML injection for the announcement banner and the PMO naming layer, plus the
+# brand strings in the served <head>.
+#
+# Installed at: /home/admin/conf/web/pmo.gobrandfactory.com/nginx.ssl.conf_banner
+#
+# Both scripts ship in one replacement because sub_filter_once is on: a second
+# directive matching </body> would never fire.
+#
+# The <head> rewrites below only fix the HTML as served. The SPA sets its own
+# document.title once it hydrates, which is why brand.js exists.
+
+# brand.js carries a version query purely as a cache-busting lever: bump it to force
+# browsers that already hold a copy to fetch a new one. (It is served no-store now,
+# but an earlier deploy shipped it with a long expiry.)
+sub_filter '</body>' '<script src="/pmo-banner/banner.js" defer></script><script src="/pmo-brand/brand.js?v=2" defer></script></body>';
+
+sub_filter '<title>Plane | Simple, extensible, open-source project management tool.</title>' '<title>PMO &#8212; BrandFactory</title>';
+sub_filter '<meta name="application-name" content="Plane"/>' '<meta name="application-name" content="PMO"/>';
+sub_filter '<meta name="apple-mobile-web-app-title" content="Plane | Simple, extensible, open-source project management tool."/>' '<meta name="apple-mobile-web-app-title" content="PMO"/>';
+sub_filter '<meta name="description" content="Open-source project management tool to manage work items, cycles, and product roadmaps easily"/>' '<meta name="description" content="The BrandFactory Project Management Office."/>';
+sub_filter '<meta property="og:title" content="Plane | Simple, extensible, open-source project management tool."/>' '<meta property="og:title" content="PMO &#8212; BrandFactory"/>';
+sub_filter '<meta property="og:description" content="Open-source project management tool to manage work items, cycles, and product roadmaps easily"/>' '<meta property="og:description" content="The BrandFactory Project Management Office."/>';
+sub_filter '<meta property="og:url" content="https://app.plane.so/"/>' '<meta property="og:url" content="https://pmo.gobrandfactory.com/"/>';
+sub_filter '<meta property="og:image:alt" content="Plane - Modern project management"/>' '<meta property="og:image:alt" content="PMO &#8212; BrandFactory"/>';
+sub_filter '<meta name="twitter:image:alt" content="Plane - Modern project management"/>' '<meta name="twitter:image:alt" content="PMO &#8212; BrandFactory"/>';
+sub_filter '<meta name="twitter:site" content="@planepowers"/>' '';
+
+sub_filter_once on;

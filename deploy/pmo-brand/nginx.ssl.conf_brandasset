@@ -1,0 +1,68 @@
+# PMO brand assets, and overrides that point Plane's own brand images at ours.
+#
+# Installed at: /home/admin/conf/web/pmo.gobrandfactory.com/nginx.ssl.conf_brandasset
+#
+# The exact= locations below carry Vite build hashes from the SPA bundle. They are
+# how the app gets rebranded without a JavaScript build, and they are the first
+# thing to re-check after a Plane upgrade — see README.md.
+
+# brand.js changes far more often than the artwork. It must never be cached, or a
+# fix sits behind whatever expiry the previous version was served with — an exact
+# match wins over the prefix location below.
+location = /pmo-brand/brand.js {
+    alias /home/admin/web/pmo.gobrandfactory.com/pmo-brand/brand.js;
+    open_file_cache off;
+    expires off;
+    add_header Cache-Control "no-store" always;
+    default_type application/javascript;
+}
+
+# Public on purpose: email clients fetch the logo with no session of any kind.
+# A day is long enough to save the round trips and short enough that replacing the
+# logo actually shows up the same day.
+location ^~ /pmo-brand/ {
+    alias /home/admin/web/pmo.gobrandfactory.com/pmo-brand/;
+    add_header Cache-Control "public, max-age=86400" always;
+    access_log off;
+}
+
+# --- browser tab and home-screen icons -------------------------------------
+location = /assets/favicon-32x32-cfWXc3P9.png {
+    alias /home/admin/web/pmo.gobrandfactory.com/pmo-brand/favicon-32.png;
+}
+location = /assets/favicon-16x16-B_Opgp1K.png {
+    alias /home/admin/web/pmo.gobrandfactory.com/pmo-brand/favicon-16.png;
+}
+location = /assets/favicon-DJlV-mcI.ico {
+    alias /home/admin/web/pmo.gobrandfactory.com/pmo-brand/favicon.ico;
+}
+location = /assets/icon-180x180-ArenqHjH.png {
+    alias /home/admin/web/pmo.gobrandfactory.com/pmo-brand/icon-180.png;
+}
+location = /assets/icon-512x512-CyS1mcXS.png {
+    alias /home/admin/web/pmo.gobrandfactory.com/pmo-brand/icon-512.png;
+}
+location = /favicon/android-chrome-192x192.png {
+    alias /home/admin/web/pmo.gobrandfactory.com/pmo-brand/icon-192.png;
+}
+location = /favicon/android-chrome-512x512.png {
+    alias /home/admin/web/pmo.gobrandfactory.com/pmo-brand/icon-512.png;
+}
+
+# --- in-app and link-preview imagery ---------------------------------------
+location = /assets/gradient-logo-BKMvbTcN.webp {
+    alias /home/admin/web/pmo.gobrandfactory.com/pmo-brand/gradient-logo.webp;
+}
+location = /assets/og-image-DL-1GVBU.png {
+    alias /home/admin/web/pmo.gobrandfactory.com/pmo-brand/og-image.png;
+}
+
+# --- PWA manifests: both say "Plane" in the stock build --------------------
+location = /manifest.json {
+    alias /home/admin/web/pmo.gobrandfactory.com/pmo-brand/manifest.json;
+    default_type application/manifest+json;
+}
+location = /site.webmanifest.json {
+    alias /home/admin/web/pmo.gobrandfactory.com/pmo-brand/site.webmanifest.json;
+    default_type application/manifest+json;
+}

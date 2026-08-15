@@ -35,7 +35,7 @@ def _html(announcement, site, author):
         poll = (
             f'<p style="margin:20px 0 0;padding:14px 16px;background:#f6f7f9;border-radius:10px;font-size:14px">'
             f'<b>{question}</b><br><span style="color:#52514e">{opts}</span><br>'
-            f'<span style="color:#898781;font-size:13px">Vote from the banner at the top of Plane.</span></p>'
+            f'<span style="color:#898781;font-size:13px">Vote from the banner at the top of PMO.</span></p>'
         )
     return f"""<div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;padding:8px">
   <p style="color:{accent};font-size:12px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;margin:0 0 6px">
@@ -43,7 +43,7 @@ def _html(announcement, site, author):
   <p style="font-size:17px;line-height:1.5;color:#0b0b0b;margin:0">{body}</p>
   {link}{poll}
   <p style="margin:26px 0 0;color:#898781;font-size:13px">
-    {'From ' + author + ' · ' if author else ''}<a href="{site}" style="color:#1c5cab">Open Plane</a></p>
+    {'From ' + author + ' · ' if author else ''}<a href="{site}" style="color:#1c5cab">Open PMO</a></p>
 </div>"""
 
 
