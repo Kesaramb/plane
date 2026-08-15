@@ -29,13 +29,16 @@ BOLD = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
 REG = "/System/Library/Fonts/Supplemental/Arial.ttf"
 
 
-def gear_points(cx, cy, r_out, teeth=8, root=0.80, tooth=0.24, flank=0.31):
-    """Outline of a gear: flat-topped teeth joined by arcs at the root radius."""
+def gear_points(cx, cy, r_out, teeth=8, root=0.80, tooth=0.24, flank=0.31, phase=0.0):
+    """Outline of a gear: flat-topped teeth joined by arcs at the root radius.
+
+    phase rotates the whole gear, which is what makes the loading spinner turn.
+    """
     pitch = 2 * math.pi / teeth
     r_root = r_out * root
     pts = []
     for i in range(teeth):
-        base = i * pitch - math.pi / 2
+        base = i * pitch - math.pi / 2 + phase
         a_top, a_root = pitch * tooth, pitch * flank
         # up the leading flank, across the tooth, down the trailing flank
         for ang, rad in (
@@ -54,8 +57,8 @@ def gear_points(cx, cy, r_out, teeth=8, root=0.80, tooth=0.24, flank=0.31):
     return pts
 
 
-def draw_gear(draw, cx, cy, r_out, colour, hole=0.42):
-    draw.polygon(gear_points(cx, cy, r_out), fill=colour)
+def draw_gear(draw, cx, cy, r_out, colour, hole=0.42, phase=0.0):
+    draw.polygon(gear_points(cx, cy, r_out, phase=phase), fill=colour)
     r_h = r_out * hole
     draw.ellipse([cx - r_h, cy - r_h, cx + r_h, cy + r_h], fill=(0, 0, 0, 0))
 
@@ -65,8 +68,13 @@ def text_size(font, s):
     return box[2] - box[0], box[3] - box[1], box[0], box[1]
 
 
-def render_mark(cap, ink=INK, blue=BLUE, pad_ratio=0.14):
-    """"PM" + gear, transparent background. cap = cap height in final pixels."""
+def render_mark(cap, ink=INK, blue=BLUE, pad_ratio=0.14, phase=0.0, matte=None):
+    """"PM" + gear. cap = cap height in final pixels.
+
+    matte fills the background instead of leaving it transparent — GIF only has
+    one-bit alpha, so the spinner frames are flattened onto the app's own
+    background rather than left with jagged cut-out edges.
+    """
     c = cap * SS
     font = ImageFont.truetype(BOLD, int(c * 1.36))  # cap height ~= 0.72 of em
     tw, th, ox, oy = text_size(font, "PM")
@@ -78,12 +86,12 @@ def render_mark(cap, ink=INK, blue=BLUE, pad_ratio=0.14):
     w = pad + tw + gap + gear_r * 2 + pad
     h = pad + max(th, gear_r * 2) + pad
 
-    img = Image.new("RGBA", (int(w), int(h)), (0, 0, 0, 0))
+    img = Image.new("RGBA", (int(w), int(h)), matte or (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
 
     mid = h / 2
     d.text((pad - ox, mid - th / 2 - oy), "PM", font=font, fill=ink)
-    draw_gear(d, pad + tw + gap + gear_r, mid, gear_r, blue)
+    draw_gear(d, pad + tw + gap + gear_r, mid, gear_r, blue, phase=phase)
 
     return img.resize((int(w / SS), int(h / SS)), Image.LANCZOS)
 
@@ -131,6 +139,38 @@ def render_icon(px, blue=BLUE):
     return img.resize((px, px), Image.LANCZOS)
 
 
+def _to_gif_frame(rgba, matte):
+    """RGBA -> palette frame with index 0 transparent.
+
+    GIF alpha is one bit, so antialiased edges are matted against the background
+    the spinner actually sits on; fully transparent pixels stay transparent, which
+    is what stops it rendering as a rectangle over the app background.
+    """
+    flat = Image.new("RGB", rgba.size, matte)
+    flat.paste(rgba, (0, 0), rgba)
+    p = flat.convert("P", palette=Image.ADAPTIVE, colors=255)
+    # shift every colour up one index so 0 is free to mean "transparent"
+    p = p.point(lambda v: v + 1)
+    mask = rgba.getchannel("A").point(lambda a: 255 if a < 128 else 0)
+    p.paste(0, (0, 0), mask)
+    return p
+
+
+def render_spinner(name, ink, matte, frames=24, ms=42):
+    """The app's loading screen: the wordmark holds still and the gear turns.
+
+    Eight teeth means the gear is identical every 45 degrees, so one period of
+    rotation is a seamless loop.
+    """
+    step = (2 * math.pi / 8) / frames
+    seq = [_to_gif_frame(render_mark(80, ink=ink, blue=BLUE, phase=i * step), matte)
+           for i in range(frames)]
+    path = os.path.join(HERE, name)
+    seq[0].save(path, save_all=True, append_images=seq[1:], duration=ms,
+                loop=0, transparency=0, disposal=2, optimize=False)
+    print(f"  {name:28} {seq[0].width}x{seq[0].height}  {frames} frames")
+
+
 def save(img, name, **kw):
     path = os.path.join(HERE, name)
     img.save(path, **kw)
@@ -158,6 +198,11 @@ if __name__ == "__main__":
     lock = render_lockup(190)
     og.paste(lock, ((1200 - lock.width) // 2, (630 - lock.height) // 2), lock)
     save(og.convert("RGB"), "og-image.png")
+
+    # Loading spinner. Plane's naming is inverted from intuition: the file called
+    # "-light" holds the DARK artwork, because it is the one shown on a light background.
+    render_spinner("logo-spinner-light.gif", ink=INK, matte=(250, 250, 250))
+    render_spinner("logo-spinner-dark.gif", ink=WHITE, matte=(14, 14, 14))
 
     ico = render_icon(64)
     ico.save(os.path.join(HERE, "favicon.ico"),

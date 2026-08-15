@@ -1,0 +1,15 @@
+
+/* --- PMO rebrand -------------------------------------------------------------
+   Appended to the app's own stylesheet on purpose. React Router reconciles the
+   whole document on hydration and removes anything nginx injects into <body>,
+   and rewriting <head> desynchronises hydration (React #418/#423). A rule inside
+   a stylesheet the app already loads is subject to neither problem.
+
+   Targets the two brand marks that live as inline SVG inside the JavaScript and
+   so have no asset path to override. Both selectors are unique in the bundle. */
+svg[viewBox="0 0 253 53"]{visibility:hidden!important;width:0!important}
+:is(a,div,span):has(>svg[viewBox="0 0 253 53"]){display:inline-block;min-width:74px;height:28px;background:url("/pmo-brand/pmo-mark.png") left center/contain no-repeat}
+:root[data-theme*="dark"] :is(a,div,span):has(>svg[viewBox="0 0 253 53"]){background-image:url("/pmo-brand/pmo-mark-white.png")}
+@media (prefers-color-scheme:dark){:root:not([data-theme*="light"]) :is(a,div,span):has(>svg[viewBox="0 0 253 53"]){background-image:url("/pmo-brand/pmo-mark-white.png")}}
+/* Plane's customer logos (Sony, Dolby, Accenture) — other people's clients. */
+div.flex.h-7.flex-1.items-center.justify-center{display:none!important}

@@ -26,6 +26,37 @@ location ^~ /pmo-brand/ {
     access_log off;
 }
 
+# The app's HTML document is served with no Cache-Control whatsoever, so browsers cache it
+# heuristically and keep serving an old copy. That is the single most damaging gap here:
+# the document is what carries the injected banner script, and it is what points at every
+# other asset. A stale one silently undoes the entire rebrand, with nothing in the logs.
+#
+# no-store on the document, at server level. Locations that set an add_header of their own
+# (/assets/, /pmo-brand/, the manifests) do not inherit it, which is exactly what we want —
+# only the HTML needs to be uncacheable. It is a few KB, gzipped, once per page load.
+#
+# NOTE: the landing page at / is a static file and already sets no-store separately; do not
+# confuse the two when checking this. Test /sign-in, not /.
+add_header Cache-Control "no-store" always;
+
+# Plane ships its hashed assets with no Cache-Control at all, so browsers fall back to
+# heuristic caching. That is normally harmless — a content hash in the filename means the
+# URL changes whenever the bytes do. It is NOT harmless here, because the PMO rebrand
+# patches those files in place and deliberately keeps the filenames. Without this, a
+# returning browser keeps serving the old Plane bundle from cache and never asks again.
+#
+# Five minutes bounds how long a patch takes to reach people, without turning every asset
+# into a conditional request on every page load. Exact-match overrides below still win.
+location /assets/ {
+    proxy_pass http://127.0.0.1:4100;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    add_header Cache-Control "max-age=300, must-revalidate" always;
+}
+
 # --- browser tab and home-screen icons -------------------------------------
 location = /assets/favicon-32x32-cfWXc3P9.png {
     alias /home/admin/web/pmo.gobrandfactory.com/pmo-brand/favicon-32.png;
@@ -49,6 +80,16 @@ location = /favicon/android-chrome-512x512.png {
     alias /home/admin/web/pmo.gobrandfactory.com/pmo-brand/icon-512.png;
 }
 
+# --- the loading screen ------------------------------------------------------
+# Full-screen while the SPA boots, so it is the most-seen artwork in the product.
+# Plane's naming is inverted: "-light" is the DARK artwork, shown on a light background.
+location = /assets/logo-spinner-light-DmBc4A-4.gif {
+    alias /home/admin/web/pmo.gobrandfactory.com/pmo-brand/logo-spinner-light.gif;
+}
+location = /assets/logo-spinner-dark-Cc1AqekO.gif {
+    alias /home/admin/web/pmo.gobrandfactory.com/pmo-brand/logo-spinner-dark.gif;
+}
+
 # --- in-app and link-preview imagery ---------------------------------------
 location = /assets/gradient-logo-BKMvbTcN.webp {
     alias /home/admin/web/pmo.gobrandfactory.com/pmo-brand/gradient-logo.webp;
@@ -61,8 +102,14 @@ location = /assets/og-image-DL-1GVBU.png {
 location = /manifest.json {
     alias /home/admin/web/pmo.gobrandfactory.com/pmo-brand/manifest.json;
     default_type application/manifest+json;
+    # own add_header so the temporary Clear-Site-Data flush is not inherited here:
+    # manifests are fetched without credentials and the browser rejects it noisily
+    add_header Cache-Control "max-age=300, must-revalidate" always;
 }
 location = /site.webmanifest.json {
     alias /home/admin/web/pmo.gobrandfactory.com/pmo-brand/site.webmanifest.json;
     default_type application/manifest+json;
+    # own add_header so the temporary Clear-Site-Data flush is not inherited here:
+    # manifests are fetched without credentials and the browser rejects it noisily
+    add_header Cache-Control "max-age=300, must-revalidate" always;
 }
