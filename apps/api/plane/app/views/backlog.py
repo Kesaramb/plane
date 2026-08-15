@@ -6,6 +6,7 @@
 # stats (XP, level, streak) derived from their completed work. Nothing here is
 # comparative — a user only ever sees their own numbers.
 import datetime
+import json
 
 from django.db.models import Q
 from django.utils import timezone
@@ -14,7 +15,7 @@ from rest_framework.response import Response
 
 from plane.app.views.base import BaseAPIView
 from plane.bgtasks.issue_activities_task import issue_activity
-from plane.db.models import Issue, IssueAssignee, State
+from plane.db.models import EstimatePoint, Issue, IssueAssignee, State
 
 OPEN = ["backlog", "unstarted", "started"]
 
@@ -78,6 +79,33 @@ def _streak(completed_dates):
     return streak
 
 
+def _as_float(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _timebox_choices(estimate_ids):
+    """The hour values each estimate scale actually offers, with the point to write.
+
+    Plane keeps the number on an EstimatePoint, not on the work item, so a timebox
+    is only settable if the project's scale has a matching point. Fetched in one
+    query and handed to the board, so it can offer real choices rather than let
+    someone pick a value that cannot be saved.
+    """
+    by_estimate = {}
+    for ep in EstimatePoint.objects.filter(estimate_id__in=estimate_ids):
+        try:
+            hours = float(ep.value)
+        except (TypeError, ValueError):
+            continue  # a categories/fibonacci scale that does not mean hours
+        by_estimate.setdefault(ep.estimate_id, []).append({"hours": hours, "point": str(ep.id)})
+    for options in by_estimate.values():
+        options.sort(key=lambda o: o["hours"])
+    return by_estimate
+
+
 class MyBacklogEndpoint(BaseAPIView):
     """The signed-in user's scored backlog and RPG stats."""
 
@@ -91,10 +119,11 @@ class MyBacklogEndpoint(BaseAPIView):
             .select_related("project", "state", "workspace", "estimate_point")
         )
 
+        open_items = [i for i in mine if i.state and i.state.group in OPEN]
+        choices = _timebox_choices({i.project.estimate_id for i in open_items if i.project.estimate_id})
+
         quests = []
-        for i in mine:
-            if not i.state or i.state.group not in OPEN:
-                continue
+        for i in open_items:
             hours = _hours(i)
             late = (today - i.target_date).days if i.target_date else None
             quests.append({
@@ -109,6 +138,7 @@ class MyBacklogEndpoint(BaseAPIView):
                 "due": str(i.target_date) if i.target_date else None,
                 "overdue_days": late if (late and late > 0) else 0,
                 "hours": hours,
+                "timebox_options": choices.get(i.project.estimate_id, []),
                 "reward_xp": _xp_points(i.priority or "none", hours),
                 "score": _score(i, today),
                 "url": f"/{i.workspace.slug}/projects/{i.project_id}/issues/{i.id}",
@@ -149,6 +179,70 @@ class MyBacklogEndpoint(BaseAPIView):
             "boss": next((q for q in quests if q["overdue_days"]), None),
             "quests": quests,
         }, status=status.HTTP_200_OK)
+
+
+class SetTimeboxEndpoint(BaseAPIView):
+    """Put a timebox on one of the caller's OWN items, from the Quest Board.
+
+    Work arrives assigned but unestimated — 1 of 110 open assigned items carried an
+    estimate before this existed — because whoever assigns it rarely knows how long
+    it will take. The person about to do it does. So the number gets set at the
+    moment they pick the task up.
+
+    It writes Plane's own estimate field rather than a private one, so the same
+    number the board sorts by is the number the capacity dashboard counts against
+    the 8h day. One number, set once, by the person best placed to judge it.
+    """
+
+    def post(self, request, issue_id):
+        if not IssueAssignee.objects.filter(assignee=request.user, issue_id=issue_id).exists():
+            return Response({"error": "not your item"}, status=status.HTTP_403_FORBIDDEN)
+        issue = Issue.issue_objects.filter(id=issue_id).select_related("project").first()
+        if not issue:
+            return Response({"error": "not found"}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            hours = float(request.data.get("hours"))
+        except (TypeError, ValueError):
+            return Response({"error": "hours must be a number"}, status=status.HTTP_400_BAD_REQUEST)
+        if not issue.project.estimate_id:
+            return Response(
+                {"error": "this project has no estimate scale to record a timebox on"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        point = next(
+            (
+                ep
+                for ep in EstimatePoint.objects.filter(estimate_id=issue.project.estimate_id)
+                if _as_float(ep.value) == hours
+            ),
+            None,
+        )
+        if not point:
+            return Response(
+                {"error": f"{hours:g}h is not on this project's scale"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        before = str(issue.estimate_point_id) if issue.estimate_point_id else None
+        issue.estimate_point = point
+        issue.save(update_fields=["estimate_point"])
+        # goes through the normal activity pipeline, so the change shows in the item's
+        # history with the right actor rather than appearing from nowhere
+        issue_activity.delay(
+            type="issue.activity.updated",
+            requested_data=json.dumps({"estimate_point": str(point.id)}),
+            actor_id=str(request.user.id),
+            issue_id=str(issue.id),
+            project_id=str(issue.project_id),
+            current_instance=json.dumps({"estimate_point": before}),
+            epoch=int(timezone.now().timestamp()),
+            notification=False,
+        )
+        return Response(
+            {"ok": True, "hours": hours, "reward_xp": _xp_points(issue.priority or "none", hours)},
+            status=status.HTTP_200_OK,
+        )
 
 
 class CompleteQuestEndpoint(BaseAPIView):

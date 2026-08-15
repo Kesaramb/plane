@@ -62,6 +62,17 @@
   .pill.high{color:#ffbf7a;border-color:#5a422a}
   .pill.late{color:var(--danger);border-color:#5a2a2a}
   .xp{color:var(--xp2);font-weight:650;font-size:12.5px;white-space:nowrap}
+
+  /* timebox: assigned work arrives without one, so it is set here, when picked up */
+  .tb{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+  .tb .lab{font-size:11.5px;color:var(--muted)}
+  button.tbx{all:unset;cursor:pointer;border:1px solid var(--line);border-radius:999px;
+             padding:1px 8px;font-size:11px;color:var(--muted);line-height:1.5}
+  button.tbx:hover{border-color:var(--xp);color:var(--xp2)}
+  button.tbx[disabled]{opacity:.4;cursor:default}
+  button.box{all:unset;cursor:pointer;border:1px solid #39406a;border-radius:999px;
+             padding:1px 8px;font-size:11px;color:var(--xp2);line-height:1.5}
+  button.box:hover{border-color:var(--xp)}
   .go{all:unset;cursor:pointer;border:1px solid var(--line);border-radius:9px;padding:7px 12px;
       font-size:12.5px;font-weight:600;color:var(--good);white-space:nowrap}
   .go:hover{background:rgba(62,207,142,.12);border-color:var(--good)}
@@ -108,16 +119,36 @@ function load() {
   }).then(function (d) { if (d) { S = d; render(); } });
 }
 
+// Whoever assigns work rarely knows how long it takes; the person picking it up does.
+// So an item with no timebox offers one here, and one that has a timebox can change it.
+function timeboxHtml(q) {
+  var opts = q.timebox_options || [];
+  if (q.hours) {
+    return '<button class="box" data-retime="' + esc(q.id) + '" title="Change timebox">⏱ '
+         + q.hours + 'h</button>';
+  }
+  if (!opts.length) return '<span class="lab">no timebox scale</span>';
+  var out = '<span class="tb"><span class="lab">timebox</span>';
+  for (var i = 0; i < opts.length; i++) {
+    out += '<button class="tbx" data-timebox="' + esc(q.id) + '" data-hours="' + opts[i].hours + '">'
+         + fmtHours(opts[i].hours) + '</button>';
+  }
+  return out + '</span>';
+}
+
+function fmtHours(h) {
+  return h < 1 ? Math.round(h * 60) + "m" : (Math.round(h * 10) / 10) + "h";
+}
+
 function questRow(q, i) {
   var late = q.overdue_days ? '<span class="pill late">' + q.overdue_days + 'd overdue</span>' : "";
   var pri = (q.priority === "urgent" || q.priority === "high")
     ? '<span class="pill ' + q.priority + '">' + q.priority + '</span>' : "";
   var due = (!q.overdue_days && q.due) ? '<span>due ' + esc(q.due) + '</span>' : "";
-  var hrs = q.hours ? '<span>' + q.hours + 'h</span>' : "";
   return '<div class="q' + (i < 3 ? ' today' : '') + '">' +
     '<div class="rank">' + (i + 1) + '</div>' +
     '<div class="body"><div class="t"><a href="' + esc(q.url) + '">' + esc(q.title) + '</a></div>' +
-    '<div class="m">' + pri + late + due + hrs +
+    '<div class="m">' + pri + late + due + timeboxHtml(q) +
     '<span>' + esc(q.ref) + ' · ' + esc(q.project) + '</span></div></div>' +
     '<div class="xp">+' + q.reward_xp + ' XP</div>' +
     '<button class="go" data-done="' + esc(q.id) + '" data-xp="' + q.reward_xp + '">Complete</button>' +
@@ -163,6 +194,36 @@ function render() {
   }
   document.getElementById("app").innerHTML = html;
 }
+
+// set a timebox
+document.addEventListener("click", function (e) {
+  var btn = e.target.closest("button[data-timebox]");
+  if (!btn) return;
+  var id = btn.getAttribute("data-timebox"), hours = parseFloat(btn.getAttribute("data-hours"));
+  var row = btn.closest(".tb");
+  if (row) row.querySelectorAll("button.tbx").forEach(function (b) { b.disabled = true; });
+  api("/api/my-backlog/" + id + "/timebox/", {
+    method: "POST", body: JSON.stringify({hours: hours})
+  }).then(function (r) {
+    return r.ok ? r.json() : r.json().then(function (j) { throw new Error(j.error || "failed"); });
+  }).then(function () {
+    toast("⏱ Timeboxed &nbsp;<span style='color:var(--xp2)'>" + fmtHours(hours) + "</span>");
+    return api("/api/my-backlog/").then(function (r) { return r.json(); });
+  }).then(function (d) { S = d; render(); })
+    .catch(function (err) {
+      if (row) row.querySelectorAll("button.tbx").forEach(function (b) { b.disabled = false; });
+      toast("⚠ " + esc(err.message));
+    });
+});
+
+// clear the current timebox so the chips come back
+document.addEventListener("click", function (e) {
+  var btn = e.target.closest("button[data-retime]");
+  if (!btn) return;
+  var id = btn.getAttribute("data-retime");
+  var q = (S.quests || []).find(function (x) { return x.id === id; });
+  if (q) { q.hours = 0; render(); }
+});
 
 document.addEventListener("click", function (e) {
   var btn = e.target.closest("button[data-done]");
