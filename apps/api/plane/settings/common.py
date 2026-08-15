@@ -288,6 +288,13 @@ CELERY_IMPORTS = (
     # issue version tasks
     "plane.bgtasks.issue_version_sync",
     "plane.bgtasks.issue_description_version_sync",
+    # Announcement email. Needed explicitly: autodiscover_tasks() only picks up modules
+    # named tasks.py, and every other bgtask module happens to get imported through some
+    # chain the worker already loads. This one is only referenced from a view, which the
+    # worker never imports — so without this line the worker receives the message, finds
+    # no task registered under that name, and discards it. Silently: the API returns 200,
+    # the announcement posts, and the email simply never goes out.
+    "plane.bgtasks.announcement_email_task",
 )
 
 FILE_SIZE_LIMIT = int(os.environ.get("FILE_SIZE_LIMIT", 5242880))
