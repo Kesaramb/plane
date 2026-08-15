@@ -120,6 +120,7 @@ def engagement_for(announcement):
     receipts = AnnouncementReceipt.objects.filter(announcement=announcement, deleted_at__isnull=True)
     seen_ids = set(receipts.filter(seen_count__gt=0).values_list("user_id", flat=True))
     clicked = receipts.filter(clicked_at__isnull=False).count()
+    emailed = receipts.filter(emailed_at__isnull=False).count()
     dismissed = AnnouncementDismissal.objects.filter(
         announcement=announcement, deleted_at__isnull=True
     ).count()
@@ -156,10 +157,18 @@ def engagement_for(announcement):
         "seen": len(seen_ids),
         "seen_pct": round(100 * len(seen_ids) / total) if total else 0,
         "clicked": clicked,
+        "emailed": emailed,
         "dismissed": dismissed,
         "not_seen_sample": not_seen,
         "not_voted_sample": not_voted,
     }
+
+
+def _queue_announcement_email(announcement, request):
+    from plane.bgtasks.announcement_email_task import send_announcement_email
+
+    site = request.build_absolute_uri("/").rstrip("/")
+    send_announcement_email.delay(str(announcement.id), site)
 
 
 class AnnouncementReceiptEndpoint(BaseAPIView):
@@ -284,6 +293,8 @@ class AnnouncementManageViewSet(BaseViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
         serializer.save(author=request.user)
+        if str(request.data.get("send_email", "")).lower() in ("1", "true", "yes"):
+            _queue_announcement_email(serializer.instance, request)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     def partial_update(self, request, pk):
@@ -300,6 +311,17 @@ class AnnouncementManageViewSet(BaseViewSet):
         else:
             serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def email(self, request, pk):
+        """Send (or re-send) this announcement by email to its audience."""
+        announcement = Announcement.objects.filter(pk=pk).first()
+        if not announcement:
+            return Response({"error": "Announcement not found"}, status=status.HTTP_404_NOT_FOUND)
+        if not self._may_write(request, announcement.audience, announcement.workspace_id):
+            return Response({"error": "You do not have permission"}, status=status.HTTP_403_FORBIDDEN)
+        count = audience_users(announcement).exclude(email="").count()
+        _queue_announcement_email(announcement, request)
+        return Response({"ok": True, "queued_for": count}, status=status.HTTP_200_OK)
 
     def destroy(self, request, pk):
         announcement = Announcement.objects.filter(pk=pk).first()

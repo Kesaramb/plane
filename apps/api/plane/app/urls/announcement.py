@@ -24,6 +24,11 @@ urlpatterns = [
         name="announcement-manage",
     ),
     path(
+        "announcements/manage/<uuid:pk>/email/",
+        AnnouncementManageViewSet.as_view({"post": "email"}),
+        name="announcement-email",
+    ),
+    path(
         "announcements/manage/<uuid:pk>/",
         AnnouncementManageViewSet.as_view({"patch": "partial_update", "delete": "destroy"}),
         name="announcement-manage-detail",

@@ -133,6 +133,7 @@ class AnnouncementReceipt(BaseModel):
     last_seen_at = models.DateTimeField(null=True)
     seen_count = models.PositiveIntegerField(default=0)
     clicked_at = models.DateTimeField(null=True)
+    emailed_at = models.DateTimeField(null=True)
 
     def __str__(self):
         return f"{self.user_id} saw {self.announcement_id}"
