@@ -7,6 +7,7 @@
 # comparative — a user only ever sees their own numbers.
 import datetime
 import json
+import logging
 
 from django.db.models import Q
 from django.utils import timezone
@@ -15,7 +16,8 @@ from rest_framework.response import Response
 
 from plane.app.views.base import BaseAPIView
 from plane.bgtasks.issue_activities_task import issue_activity
-from plane.db.models import EstimatePoint, FocusBlock, FocusOutcome, Issue, IssueAssignee, State
+from plane.db.models import EstimatePoint, FocusBlock, FocusOutcome, Issue, IssueAssignee, State, User
+from plane.license.models import InstanceAdmin
 
 OPEN = ["backlog", "unstarted", "started"]
 
@@ -234,11 +236,52 @@ def _timebox_choices(estimate_ids):
     return by_estimate
 
 
+def _resolve_subject(request):
+    """Whose board is being asked for: your own, or — for an instance admin — someone's.
+
+    Read only, and only for reading. Every action endpoint keeps checking the caller's
+    own assignment, so an admin looking at a board cannot start a block, tick something
+    off or set a size on another person's behalf.
+
+    The view is recorded in the API log. Nobody is notified, but there is a record of
+    who looked and when, which is the least a system should do before it hands one
+    person another person's working day.
+    """
+    as_user = request.GET.get("as")
+    if not as_user:
+        return request.user, None, None
+    if not InstanceAdmin.objects.filter(user=request.user).exists():
+        return None, None, Response({"error": "not permitted"}, status=status.HTTP_403_FORBIDDEN)
+    target = User.objects.filter(id=as_user).first()
+    if not target:
+        return None, None, Response({"error": "no such user"}, status=status.HTTP_404_NOT_FOUND)
+    logging.getLogger("plane.api").info(
+        "quest board of %s viewed by instance admin %s", target.email, request.user.email
+    )
+    return (
+        target,
+        {
+            "id": str(target.id),
+            "name": target.display_name or target.email,
+            "email": target.email,
+            "read_only": True,
+        },
+        None,
+    )
+
+
 class MyBacklogEndpoint(BaseAPIView):
-    """The signed-in user's scored backlog and RPG stats."""
+    """The signed-in user's scored backlog and RPG stats.
+
+    An instance admin may pass ?as=<user id> to read another member's board. The board
+    is the same data the manager dashboard already shows — their assigned work, ranked —
+    plus two things it does not: the private XP/level/streak, and focus block timings.
+    """
 
     def get(self, request):
-        user = request.user
+        user, viewing, error = _resolve_subject(request)
+        if error:
+            return error
         today = timezone.now().date()
 
         issue_ids = IssueAssignee.objects.filter(assignee=user).values_list("issue_id", flat=True)
@@ -327,6 +370,8 @@ class MyBacklogEndpoint(BaseAPIView):
             "blocks_today": blocks_today,
             "focus_minutes_today": focus_minutes_today,
             "calendar": _calendar(user, quests, today),
+            # null when you are looking at your own board
+            "viewing": viewing,
         }, status=status.HTTP_200_OK)
 
 
