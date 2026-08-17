@@ -130,6 +130,83 @@ def _active_block_payload(user):
     }
 
 
+# A working day, for the load bars. The same 8 hours the capacity view measures against,
+# so the two never disagree about what a full day looks like.
+DAY_MINUTES = 8 * 60
+AHEAD_DAYS = 14
+
+
+def _calendar(user, quests, today):
+    """Today as a timeline, and the next two weeks as load.
+
+    Built from the quests already in hand plus one query for today's blocks, so the
+    board stays a single request. Nothing here invents working hours: blocks are shown
+    at the times they actually happened, and the day bar measures against the 8h budget
+    rather than a 9-to-5 grid nobody agreed to.
+    """
+    blocks = []
+    used = 0
+    for b in (
+        FocusBlock.objects.filter(user=user, started_at__date=today)
+        .select_related("issue", "issue__project")
+        .order_by("started_at")
+    ):
+        running = b.outcome == FocusOutcome.RUNNING
+        counted = b.outcome in (FocusOutcome.LANDED, FocusOutcome.COMPLETED)
+        if counted:
+            used += b.minutes
+        blocks.append({
+            "at": timezone.localtime(b.started_at).strftime("%H:%M"),
+            "minutes": b.minutes,
+            "outcome": b.outcome,
+            "running": running,
+            "title": b.issue.name,
+            "ref": f"{b.issue.project.identifier}-{b.issue.sequence_id}",
+            "reward_xp": _block_xp(b.minutes) if counted else 0,
+        })
+
+    # due-date load, straight off the scored list — no second pass over the database
+    by_day = {}
+    late_count = late_hours = 0
+    for q in quests:
+        if q["overdue_days"]:
+            late_count += 1
+            late_hours += q["hours"]
+        elif q["due"]:
+            slot = by_day.setdefault(q["due"], {"due": 0, "hours": 0.0, "items": []})
+            slot["due"] += 1
+            slot["hours"] += q["hours"]
+            if len(slot["items"]) < 6:
+                slot["items"].append({
+                    "ref": q["ref"], "title": q["title"], "priority": q["priority"], "url": q["url"],
+                })
+
+    ahead = []
+    for n in range(AHEAD_DAYS):
+        d = today + datetime.timedelta(days=n)
+        key = str(d)
+        slot = by_day.get(key, {"due": 0, "hours": 0.0, "items": []})
+        ahead.append({
+            "date": key,
+            "weekday": d.strftime("%a"),
+            "day": d.day,
+            "is_today": n == 0,
+            "is_weekend": d.weekday() >= 5,
+            **slot,
+        })
+
+    return {
+        "today": {
+            "date": str(today),
+            "budget_minutes": DAY_MINUTES,
+            "used_minutes": used,
+            "blocks": blocks,
+        },
+        "overdue": {"count": late_count, "hours": late_hours},
+        "ahead": ahead,
+    }
+
+
 def _as_float(value):
     try:
         return float(value)
@@ -249,6 +326,7 @@ class MyBacklogEndpoint(BaseAPIView):
             "block_choices": BLOCK_CHOICES,
             "blocks_today": blocks_today,
             "focus_minutes_today": focus_minutes_today,
+            "calendar": _calendar(user, quests, today),
         }, status=status.HTTP_200_OK)
 
 
