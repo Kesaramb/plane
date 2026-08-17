@@ -78,6 +78,7 @@ from .workspace import (
     Team,
     TeamMember,
 )
+from .focus import FocusBlock, FocusOutcome
 from .announcement import (
     Announcement,
     AnnouncementAudience,

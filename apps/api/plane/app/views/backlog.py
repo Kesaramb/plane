@@ -15,7 +15,7 @@ from rest_framework.response import Response
 
 from plane.app.views.base import BaseAPIView
 from plane.bgtasks.issue_activities_task import issue_activity
-from plane.db.models import EstimatePoint, Issue, IssueAssignee, State
+from plane.db.models import EstimatePoint, FocusBlock, FocusOutcome, Issue, IssueAssignee, State
 
 OPEN = ["backlog", "unstarted", "started"]
 
@@ -77,6 +77,57 @@ def _streak(completed_dates):
         streak += 1
         cursor -= datetime.timedelta(days=1)
     return streak
+
+
+# Flow-shaped block lengths. Short enough to start without negotiating with yourself,
+# long enough to get somewhere. 30 is the floor because anything less is task-switching.
+BLOCK_CHOICES = [30, 50, 90]
+BLOCK_MIN, BLOCK_MAX = 5, 240
+
+# Landing a block earns XP whether or not the item closed. Showing up is the behaviour
+# worth reinforcing; rewarding only completions quietly teaches people to pick small
+# tickets and avoid the hard one that actually matters.
+def _block_xp(minutes):
+    return max(1, round(minutes / 10))
+
+
+def _close_running_block(user, outcome):
+    """End whatever the user has running. Returns the block, or None."""
+    block = FocusBlock.objects.filter(user=user, outcome=FocusOutcome.RUNNING).first()
+    if not block:
+        return None
+    block.outcome = outcome
+    block.ended_at = timezone.now()
+    block.save(update_fields=["outcome", "ended_at"])
+    return block
+
+
+def _active_block_payload(user):
+    block = (
+        FocusBlock.objects.filter(user=user, outcome=FocusOutcome.RUNNING)
+        .select_related("issue", "issue__project", "issue__workspace", "issue__estimate_point")
+        .first()
+    )
+    if not block:
+        return None
+    i = block.issue
+    # size travels with the block so the card can ask for it once, and only if missing
+    hours = _hours(i)
+    options = [] if hours else _timebox_choices({i.project.estimate_id}).get(i.project.estimate_id, [])
+    return {
+        "hours": hours,
+        "timebox_options": options,
+        "id": str(block.id),
+        "issue_id": str(i.id),
+        "title": i.name,
+        "ref": f"{i.project.identifier}-{i.sequence_id}",
+        "project": i.project.name,
+        "url": f"/{i.workspace.slug}/projects/{i.project_id}/issues/{i.id}",
+        "minutes": block.minutes,
+        "started_at": block.started_at.isoformat(),
+        "remaining_seconds": block.remaining_seconds(),
+        "reward_xp": _block_xp(block.minutes),
+    }
 
 
 def _as_float(value):
@@ -165,6 +216,21 @@ class MyBacklogEndpoint(BaseAPIView):
             if d >= today - datetime.timedelta(days=6):
                 week_done += 1
 
+        # Focus blocks feed the same XP pool rather than a parallel one — a level should
+        # mean "work done", and sitting down with the hard thing is work done. The streak
+        # counts either kind of progress, so nobody loses a run they already had.
+        landed = FocusBlock.objects.filter(
+            user=user, outcome__in=[FocusOutcome.LANDED, FocusOutcome.COMPLETED]
+        ).values_list("minutes", "started_at")
+        blocks_today = focus_minutes_today = 0
+        for minutes, started in landed:
+            xp += _block_xp(minutes)
+            d = timezone.localtime(started).date()
+            completed_dates.append(d)
+            if d == today:
+                blocks_today += 1
+                focus_minutes_today += minutes
+
         stats = _level(xp)
         overdue = sum(1 for q in quests if q["overdue_days"])
         return Response({
@@ -178,7 +244,64 @@ class MyBacklogEndpoint(BaseAPIView):
             "overdue_total": overdue,
             "boss": next((q for q in quests if q["overdue_days"]), None),
             "quests": quests,
+            # the anchor: what this person is working on right now, if anything
+            "active_block": _active_block_payload(user),
+            "block_choices": BLOCK_CHOICES,
+            "blocks_today": blocks_today,
+            "focus_minutes_today": focus_minutes_today,
         }, status=status.HTTP_200_OK)
+
+
+class StartFocusEndpoint(BaseAPIView):
+    """Commit to one task for a set number of minutes, starting now.
+
+    Starting a block ends any other block the user has running: "now" is singular by
+    definition, and leaving an old one open would silently inflate the day's totals.
+    The previous block is recorded as stopped rather than deleted, because abandoning
+    a block is real data about the day.
+    """
+
+    def post(self, request, issue_id):
+        if not IssueAssignee.objects.filter(assignee=request.user, issue_id=issue_id).exists():
+            return Response({"error": "not your item"}, status=status.HTTP_403_FORBIDDEN)
+        if not Issue.issue_objects.filter(id=issue_id).exists():
+            return Response({"error": "not found"}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            minutes = int(request.data.get("minutes"))
+        except (TypeError, ValueError):
+            return Response({"error": "minutes must be a whole number"}, status=status.HTTP_400_BAD_REQUEST)
+        if not BLOCK_MIN <= minutes <= BLOCK_MAX:
+            return Response(
+                {"error": f"a block must be between {BLOCK_MIN} and {BLOCK_MAX} minutes"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        _close_running_block(request.user, FocusOutcome.STOPPED)
+        FocusBlock.objects.create(user=request.user, issue_id=issue_id, minutes=minutes)
+        return Response({"ok": True, "active": _active_block_payload(request.user)}, status=status.HTTP_200_OK)
+
+
+class EndFocusEndpoint(BaseAPIView):
+    """Land or abandon the running block.
+
+    "landed" is for a block that ran its length, "stopped" for one cut short. Both are
+    kept: a day of stopped blocks is worth being able to see.
+    """
+
+    def post(self, request):
+        wanted = str(request.data.get("outcome", "")).lower()
+        outcome = FocusOutcome.LANDED if wanted == "landed" else FocusOutcome.STOPPED
+        block = _close_running_block(request.user, outcome)
+        if not block:
+            return Response({"error": "nothing running"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                "ok": True,
+                "outcome": outcome,
+                "reward_xp": _block_xp(block.minutes) if outcome == FocusOutcome.LANDED else 0,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class SetTimeboxEndpoint(BaseAPIView):
@@ -278,7 +401,20 @@ class CompleteQuestEndpoint(BaseAPIView):
             epoch=int(timezone.now().timestamp()),
             notification=True,
         )
+        # finishing the item closes the block you were in, and that block still counts
+        block = FocusBlock.objects.filter(
+            user=request.user, issue_id=issue.id, outcome=FocusOutcome.RUNNING
+        ).first()
+        if block:
+            block.outcome = FocusOutcome.COMPLETED
+            block.ended_at = timezone.now()
+            block.save(update_fields=["outcome", "ended_at"])
+
         return Response(
-            {"ok": True, "reward_xp": _xp_points(issue.priority or "none", _hours(issue))},
+            {
+                "ok": True,
+                "reward_xp": _xp_points(issue.priority or "none", _hours(issue))
+                + (_block_xp(block.minutes) if block else 0),
+            },
             status=status.HTTP_200_OK,
         )

@@ -247,4 +247,10 @@ from .announcement import (
     AnnouncementVoteEndpoint,
 )
 
-from .backlog import MyBacklogEndpoint, CompleteQuestEndpoint, SetTimeboxEndpoint
+from .backlog import (
+    MyBacklogEndpoint,
+    CompleteQuestEndpoint,
+    SetTimeboxEndpoint,
+    StartFocusEndpoint,
+    EndFocusEndpoint,
+)
