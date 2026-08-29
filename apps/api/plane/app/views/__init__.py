@@ -253,4 +253,5 @@ from .backlog import (
     SetTimeboxEndpoint,
     StartFocusEndpoint,
     EndFocusEndpoint,
+    PauseFocusEndpoint,
 )

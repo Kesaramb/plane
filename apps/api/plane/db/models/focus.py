@@ -40,6 +40,12 @@ class FocusBlock(BaseModel):
     ended_at = models.DateTimeField(null=True, blank=True)
     outcome = models.CharField(max_length=12, choices=FocusOutcome.choices, default=FocusOutcome.RUNNING)
 
+    # A paused block is still the open one — pausing is not an outcome, it is a state a
+    # running block is in. Keeping outcome as "running" is what preserves the one-open-
+    # block-per-person constraint: pausing must not let a second block be started.
+    paused_at = models.DateTimeField(null=True, blank=True)
+    paused_seconds = models.PositiveIntegerField(default=0)
+
     class Meta:
         db_table = "focus_blocks"
         verbose_name = "Focus Block"
@@ -58,8 +64,22 @@ class FocusBlock(BaseModel):
         return f"{self.user_id} · {self.minutes}m · {self.outcome}"
 
     @property
-    def ends_at(self):
-        return self.started_at + datetime.timedelta(minutes=self.minutes)
+    def is_paused(self):
+        return self.paused_at is not None
+
+    def elapsed_seconds(self):
+        """Time actually spent in the block: wall clock minus everything paused.
+
+        Measured from the clock rather than accumulated by the browser, so closing the
+        tab, sleeping the laptop or coming back tomorrow all give the same answer.
+        """
+        upto = self.paused_at or timezone.now()
+        return max(0, int((upto - self.started_at).total_seconds()) - self.paused_seconds)
 
     def remaining_seconds(self):
-        return max(0, int((self.ends_at - timezone.now()).total_seconds()))
+        return max(0, self.minutes * 60 - self.elapsed_seconds())
+
+    def paused_for_seconds(self):
+        if not self.paused_at:
+            return 0
+        return max(0, int((timezone.now() - self.paused_at).total_seconds()))

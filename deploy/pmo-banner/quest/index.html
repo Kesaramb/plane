@@ -101,6 +101,8 @@
   .nowacts button.btn-done:hover{background:rgba(62,207,142,.14)}
   .nowacts button.btn-land{border:1px solid var(--xp);color:var(--xp2)}
   .nowacts button.btn-land:hover{background:rgba(91,140,255,.14)}
+  .nowacts button.btn-hold{border:1px solid var(--gold);color:var(--gold)}
+  .nowacts button.btn-hold:hover{background:rgba(245,185,66,.14)}
   .nowacts button.btn-stop{border:1px solid var(--line);color:var(--muted)}
   .nowacts button.btn-stop:hover{border-color:var(--danger);color:var(--danger)}
 
@@ -147,6 +149,59 @@
   .dayitems a{color:var(--ink);text-decoration:none}
   .dayitems a:hover{text-decoration:underline}
 
+  /* ---- motion, built for flow rather than against it ----------------------------
+     Flow is broken by anything that grabs attention, so nothing here competes for it.
+     Three rules:
+       1. During a block, motion is ambient and slow — felt, not watched.
+       2. The page gets quieter the longer you stay in, so depth is visibly rewarded.
+       3. Celebration happens only at the boundary, where there is no flow to break.
+     All of it collapses to nothing under prefers-reduced-motion.                     */
+
+  /* 1. a slow breath behind the card, near a resting respiratory rhythm */
+  @keyframes breathe {
+    0%,100% { opacity:.30; transform:scale(1) }
+    50%     { opacity:.75; transform:scale(1.06) }
+  }
+  .now .aura{position:absolute;inset:-30% -10%;pointer-events:none;
+             background:radial-gradient(closest-side,rgba(91,140,255,.30),transparent 70%);
+             animation:breathe 11s ease-in-out infinite;will-change:opacity,transform}
+  .now.paused .aura{animation:none;opacity:.12}
+
+  /* 2. depth: the surroundings recede as the block progresses (set from JS) */
+  .wrap{transition:filter 2.4s linear}
+  body.deep .stats,body.deep .hero{transition:opacity 2.4s linear}
+
+  /* the clock itself only moves at the moments that matter */
+  @keyframes tickpulse { 0%,100%{opacity:1} 50%{opacity:.55} }
+  .clock.paused{animation:tickpulse 2.6s ease-in-out infinite;color:var(--muted)}
+  @keyframes lastminute { 0%,100%{color:var(--gold)} 50%{color:var(--fire)} }
+  .clock.closing{animation:lastminute 3s ease-in-out infinite}
+
+  /* 3. the reward, at the boundary only */
+  @keyframes xprise {
+    0%   { opacity:0; transform:translateY(6px) scale(.9) }
+    18%  { opacity:1; transform:translateY(-2px) scale(1.06) }
+    75%  { opacity:1 }
+    100% { opacity:0; transform:translateY(-58px) scale(1) }
+  }
+  #xpfly{position:fixed;left:50%;top:38%;transform:translateX(-50%);z-index:60;
+         font-size:30px;font-weight:750;color:var(--xp2);pointer-events:none;
+         text-shadow:0 4px 26px rgba(91,140,255,.65);opacity:0}
+  #xpfly.go{animation:xprise 2.1s cubic-bezier(.2,.8,.2,1) forwards}
+  @keyframes barflash { 0%{box-shadow:0 0 0 0 rgba(138,180,255,.55)} 100%{box-shadow:0 0 0 14px rgba(138,180,255,0)} }
+  .bar.gained{animation:barflash 1.2s ease-out}
+
+  /* paused: the card is held, visibly, rather than quietly still */
+  .now.paused{border-color:#5a4a1f;background:linear-gradient(150deg,#241f14,#16151f)}
+  .now.paused .tag{color:var(--gold)}
+  .pausednote{margin-top:10px;font-size:12.5px;color:var(--gold);position:relative}
+
+  @media (prefers-reduced-motion: reduce) {
+    .now .aura,.clock.paused,.clock.closing,#xpfly.go,.bar.gained{animation:none}
+    .wrap{transition:none}
+    #xpfly.go{opacity:1}
+  }
+
   /* admin viewing someone else's board — banner is for the admin, not the member */
   .asbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#2a2416;
          border:1px solid #5a4a1f;border-radius:12px;padding:10px 14px;margin-bottom:18px;
@@ -186,6 +241,7 @@
 <body>
 <div class="wrap" id="app"><div class="empty">Loading your quests…</div></div>
 <div id="toast"></div>
+<div id="xpfly" aria-hidden="true"></div>
 
 <script>
 "use strict";
@@ -259,17 +315,21 @@ function fmtClock(sec) {
 // The anchor. Deliberately the largest thing on the page: what you are on, how long
 // is left, and only two ways out of it.
 function nowHtml(b) {
-  return '<div class="now"><div class="nowgrid">' +
+  var paused = !!b.paused;
+  return '<div class="now' + (paused ? " paused" : "") + '"><div class="aura"></div><div class="nowgrid">' +
     '<div class="left">' +
-      '<div class="tag">◈ In focus</div>' +
+      '<div class="tag">' + (paused ? "⏸ Held" : "◈ In focus") + '</div>' +
       '<h2><a href="' + esc(b.url) + '">' + esc(b.title) + '</a></h2>' +
       '<div class="meta">' + esc(b.ref) + ' · ' + esc(b.project) +
         ' · ' + b.minutes + '-minute block · +' + b.reward_xp + ' XP to land it</div>' +
+      (paused ? '<div class="pausednote">Paused ' + fmtAgo(b.paused_for_seconds) +
+                '. The clock stopped — pick it up when you are back.</div>' : "") +
       '<div class="ring"><i id="ring" style="width:0%"></i></div>' +
       sizeHtml(b) +
       (readOnly() ? "" : '<div class="nowacts">' +
         '<button class="btn-done" data-done="' + esc(b.issue_id) + '" data-xp="' + b.reward_xp + '">Done — finish the task</button>' +
         '<button class="btn-land" id="landBtn">Land the block</button>' +
+        '<button class="btn-hold" id="holdBtn">' + (paused ? "Resume" : "Pause") + '</button>' +
         '<button class="btn-stop" id="stopBtn">Stop</button>' +
       '</div>') +
     '</div>' +
@@ -363,11 +423,52 @@ document.addEventListener("click", function (e) {
   render();
 });
 
+function fmtAgo(sec) {
+  if (sec < 90) return "just now";
+  var m = Math.round(sec / 60);
+  if (m < 60) return m + " min ago";
+  var h = Math.floor(m / 60);
+  return h < 24 ? h + "h " + (m % 60) + "m ago" : Math.floor(h / 24) + "d ago";
+}
+
+// Depth: the further into a block, the more the surroundings recede. Slow enough that
+// you never catch it moving — you just notice, later, that the room got quiet.
+function setDepth(p) {
+  var wrap = document.querySelector(".wrap");
+  if (!wrap) return;
+  wrap.style.filter = p > 0 ? "saturate(" + (1 - 0.35 * p).toFixed(3) + ")" : "";
+  var recede = document.querySelectorAll(".stats, .hero");
+  for (var i = 0; i < recede.length; i++) {
+    recede[i].style.opacity = p > 0 ? (1 - 0.45 * p).toFixed(3) : "";
+  }
+}
+
+// The reward, at the boundary. Deliberately the only loud thing on the page, and it
+// only ever fires when a block has just ended — never while one is running.
+function celebrate(xp, levelled) {
+  var fly = document.getElementById("xpfly");
+  if (fly) {
+    fly.textContent = "+" + xp + " XP";
+    fly.classList.remove("go"); void fly.offsetWidth; fly.classList.add("go");
+  }
+  var bar = document.querySelector(".bar");
+  if (bar) { bar.classList.remove("gained"); void bar.offsetWidth; bar.classList.add("gained"); }
+  if (levelled) setTimeout(function () { toast("🌟 <span class='lvlup'>Level " + levelled + "!</span>", 4200); }, 1400);
+}
+
 var CLOCK = null;
 function startClock(b) {
   stopClock();
-  var ends = Date.now() + b.remaining_seconds * 1000;
   var total = b.minutes * 60;
+  var el0 = document.getElementById("clock");
+  if (b.paused) {                      // held: show the time banked, do not count
+    if (el0) { el0.textContent = fmtClock(b.remaining_seconds); el0.classList.add("paused"); }
+    var r0 = document.getElementById("ring");
+    if (r0) r0.style.width = Math.min(100, 100 * (total - b.remaining_seconds) / total) + "%";
+    setDepth(0);
+    return;
+  }
+  var ends = Date.now() + b.remaining_seconds * 1000;
   function paint() {
     var left = Math.round((ends - Date.now()) / 1000);
     var el = document.getElementById("clock"), ring = document.getElementById("ring"),
@@ -376,6 +477,8 @@ function startClock(b) {
     el.textContent = fmtClock(left);
     var done = Math.min(100, Math.max(0, 100 * (total - left) / total));
     ring.style.width = done + "%";
+    setDepth(done / 100);                       // the world quietens as you go
+    el.classList.toggle("closing", left > 0 && left <= 60);
     if (left <= 0) {
       el.classList.add("over"); ring.classList.add("over");
       if (lab) lab.textContent = "over — land it";
@@ -451,6 +554,7 @@ function render() {
     return;
   }
   stopClock();
+  setDepth(0);
 
   // Deliberately not shown during a block: the day bar is encouragement, but the
   // fortnight strip is a planning surface, and planning is a decision. While a block
@@ -499,6 +603,18 @@ document.addEventListener("click", function (e) {
     .catch(function (err) { btn.disabled = false; toast("⚠ " + esc(err.message)); });
 });
 
+// hold the block, or pick it back up
+document.addEventListener("click", function (e) {
+  var btn = e.target.closest("#holdBtn");
+  if (!btn) return;
+  var resuming = btn.textContent.trim() === "Resume";
+  btn.disabled = true;
+  api("/api/my-backlog/focus/pause/", {method: "POST", body: JSON.stringify({resume: resuming})})
+    .then(function (r) { return r.ok ? r.json() : r.json().then(function (j) { throw new Error(j.error || "failed"); }); })
+    .then(function () { toast(resuming ? "◈ Back in it." : "⏸ Held. The clock stopped."); return reload(); })
+    .catch(function (err) { btn.disabled = false; toast("⚠ " + esc(err.message)); });
+});
+
 // land it (ran its length) or stop it (cut short) — both are recorded
 document.addEventListener("click", function (e) {
   var land = e.target.closest("#landBtn"), stop = e.target.closest("#stopBtn");
@@ -507,9 +623,14 @@ document.addEventListener("click", function (e) {
   api("/api/my-backlog/focus/end/", {method: "POST", body: JSON.stringify({outcome: outcome})})
     .then(function (r) { return r.ok ? r.json() : r.json().then(function (j) { throw new Error(j.error || "failed"); }); })
     .then(function (res) {
+      var before = S.level;
+      if (land) celebrate(res.reward_xp, null);
       toast(land ? "◈ Block landed &nbsp;<span style='color:var(--xp2)'>+" + res.reward_xp + " XP</span>"
                  : "Block stopped.");
-      return reload();
+      return reload().then(function (d) {
+        if (land && d.level > before) celebrate(res.reward_xp, d.level);
+        return d;
+      });
     })
     .catch(function (err) { toast("⚠ " + esc(err.message)); });
 });
@@ -548,6 +669,7 @@ document.addEventListener("click", function (e) {
     .then(function (res) {
       // finishing inside a block closes the block too, so the reward covers both
       var gained = (res && res.reward_xp) || xp;
+      celebrate(gained, null);
       toast((inBlock ? "◈ Landed and done" : "⚔ Quest complete") +
             " &nbsp;<span style='color:var(--xp2)'>+" + gained + " XP</span>");
       return reload();

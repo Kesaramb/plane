@@ -128,6 +128,9 @@ def _active_block_payload(user):
         "minutes": block.minutes,
         "started_at": block.started_at.isoformat(),
         "remaining_seconds": block.remaining_seconds(),
+        "elapsed_seconds": block.elapsed_seconds(),
+        "paused": block.is_paused,
+        "paused_for_seconds": block.paused_for_seconds(),
         "reward_xp": _block_xp(block.minutes),
     }
 
@@ -402,6 +405,43 @@ class StartFocusEndpoint(BaseAPIView):
         _close_running_block(request.user, FocusOutcome.STOPPED)
         FocusBlock.objects.create(user=request.user, issue_id=issue_id, minutes=minutes)
         return Response({"ok": True, "active": _active_block_payload(request.user)}, status=status.HTTP_200_OK)
+
+
+class PauseFocusEndpoint(BaseAPIView):
+    """Hold the running block, or pick it back up.
+
+    A block survives the interruption instead of being lost to it. Stopping and
+    restarting would cost the time already served and record an abandonment that did
+    not happen, which quietly teaches people to leave a block running through a
+    twenty-minute phone call and call it focus. Pausing keeps the number honest.
+
+    The clock is not ticked by the browser: pausing stamps a time and resuming banks
+    the difference, so the answer is the same whether you closed the tab, slept the
+    laptop, or came back the next morning.
+    """
+
+    def post(self, request):
+        block = FocusBlock.objects.filter(user=request.user, outcome=FocusOutcome.RUNNING).first()
+        if not block:
+            return Response({"error": "nothing running"}, status=status.HTTP_400_BAD_REQUEST)
+
+        resume = str(request.data.get("resume", "")).lower() in ("1", "true", "yes")
+        if resume:
+            if not block.is_paused:
+                return Response({"error": "not paused"}, status=status.HTTP_400_BAD_REQUEST)
+            block.paused_seconds += block.paused_for_seconds()
+            block.paused_at = None
+            block.save(update_fields=["paused_at", "paused_seconds"])
+        else:
+            if block.is_paused:
+                return Response({"error": "already paused"}, status=status.HTTP_400_BAD_REQUEST)
+            block.paused_at = timezone.now()
+            block.save(update_fields=["paused_at"])
+
+        return Response(
+            {"ok": True, "paused": block.is_paused, "active": _active_block_payload(request.user)},
+            status=status.HTTP_200_OK,
+        )
 
 
 class EndFocusEndpoint(BaseAPIView):

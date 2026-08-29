@@ -5,6 +5,7 @@ from plane.app.views import (
     CompleteQuestEndpoint,
     EndFocusEndpoint,
     MyBacklogEndpoint,
+    PauseFocusEndpoint,
     SetTimeboxEndpoint,
     StartFocusEndpoint,
 )
@@ -15,4 +16,5 @@ urlpatterns = [
     path("my-backlog/<uuid:issue_id>/timebox/", SetTimeboxEndpoint.as_view(), name="quest-timebox"),
     path("my-backlog/<uuid:issue_id>/focus/", StartFocusEndpoint.as_view(), name="quest-focus-start"),
     path("my-backlog/focus/end/", EndFocusEndpoint.as_view(), name="quest-focus-end"),
+    path("my-backlog/focus/pause/", PauseFocusEndpoint.as_view(), name="quest-focus-pause"),
 ]
