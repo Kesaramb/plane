@@ -1,0 +1,50 @@
+# Per-member Claude connector — the personal MCP (pmo_mcp_user.py) on 127.0.0.1:8793.
+#
+# Installed at: /home/admin/conf/web/my.gobrandfactory.com/nginx.ssl.conf_mcpuser
+#
+# WHY A SEPARATE HOST
+# The manager connector already owns /authorize, /token, /register and the OAuth
+# discovery documents at the root of pmo.gobrandfactory.com. OAuth discovery is defined
+# relative to the issuer, so a second connector cannot share those paths — it needs its
+# own origin. Hence my.gobrandfactory.com rather than a sub-path.
+#
+# WHY A DIFFERENT PASSWORD FILE
+# /authorize is what approves a connection, so whoever can pass it can bind a connector
+# to whatever Plane token this service holds. It is gated by .mcpuser_htpasswd — the
+# member's own login — deliberately NOT the shared dashboard credential, which would let
+# any member approve a connector for any other, and would also hand them the dashboard.
+#
+# Machine-to-machine endpoints (/token, /register, discovery) must stay open: Anthropic's
+# servers call them directly and cannot present a browser login.
+
+location = /authorize {
+    auth_basic "PMO — my work";
+    auth_basic_user_file /home/admin/conf/web/pmo.gobrandfactory.com/.mcpuser_htpasswd;
+    proxy_pass http://127.0.0.1:8793;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location = /token    { proxy_pass http://127.0.0.1:8793; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+location = /register { proxy_pass http://127.0.0.1:8793; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+
+location = /.well-known/oauth-authorization-server {
+    proxy_pass http://127.0.0.1:8793; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme;
+}
+# prefix, not exact: FastMCP serves this per-resource, at /.well-known/oauth-protected-resource/mcp
+location ^~ /.well-known/oauth-protected-resource {
+    proxy_pass http://127.0.0.1:8793; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location ^~ /mcp {
+    proxy_pass http://127.0.0.1:8793;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_buffering off;      # streamed responses must not be held back
+    proxy_cache off;
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+}
