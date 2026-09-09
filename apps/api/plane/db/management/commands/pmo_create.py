@@ -222,7 +222,7 @@ class Command(BaseCommand):
 
     def _work_item(self, p):
         from plane.db.models import (
-            CycleIssue, EstimatePoint, Issue, IssueAssignee, State, User,
+            CycleIssue, EstimatePoint, Issue, IssueAssignee, ProjectMember, State, User,
         )
 
         workspace = self._workspace(p["workspace"])
@@ -278,6 +278,21 @@ class Command(BaseCommand):
                 [IssueAssignee(issue=issue, assignee=u, project=project, workspace=workspace) for u in assignees],
                 ignore_conflicts=True,
             )
+            # An assignee who is not a member of the project cannot open it, so the item
+            # lands nowhere they can see — assigned in the database and invisible in the
+            # app. Only the project owner and lead get membership at creation, so anyone
+            # else planned into the work needs it adding here.
+            #
+            # One at a time rather than bulk_create: ProjectMember.save() also creates the
+            # ProjectUserProperty row that puts the project in that person's sidebar, and
+            # bulk_create skips save() entirely.
+            for user in assignees:
+                if not ProjectMember.objects.filter(
+                    project=project, member=user, deleted_at__isnull=True
+                ).exists():
+                    ProjectMember.objects.create(
+                        project=project, member=user, workspace=workspace, role=15, created_by=owner
+                    )
 
         cycle_ref = p.get("cycle_id") or p.get("cycle")
         if cycle_ref:
