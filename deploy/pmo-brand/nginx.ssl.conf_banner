@@ -27,6 +27,21 @@
 # costs one blocking fetch of ~10KB from the same origin. banner.js already waits for
 # DOMContentLoaded before touching the DOM, and re-attaches itself from a MutationObserver
 # afterwards, so React removing the tag later is harmless.
-sub_filter '</head>' '<script src="/pmo-banner/banner.js"></script></head>';
+#
+# The inline script before it is a requestIdleCallback polyfill, and without it every
+# work item list crashes in Safari. Plane's RenderIfVisible calls
+# window.requestIdleCallback with no check (render-if-visible-HOC.tsx:80, for every row
+# that scrolls into view) and Safari has never shipped it. Plane has a polyfill for this
+# in apps/web/core/lib/polyfills, but nothing imports it, so it never reaches the bundle —
+# the list view throws inside an effect and the route error boundary replaces the page
+# with "Looks like something went wrong!". Chrome and Firefox have the API natively,
+# which is why it only ever reproduced on iPhones.
+#
+# Inline rather than a file so no cache can serve a copy without it: the HTML itself is
+# no-store. It must stay free of single quotes and dollar signs — this is an nginx
+# single-quoted string, and $ would be read as a variable. Mirrors Plane's own polyfill.
+# The source-level fix (importing that polyfill at the app root) only takes effect on a
+# rebuild of the web image; until then this is what keeps Safari working.
+sub_filter '</head>' '<script>window.requestIdleCallback||(window.requestIdleCallback=function(c){var s=Date.now();return setTimeout(function(){c({didTimeout:false,timeRemaining:function(){return Math.max(0,50-(Date.now()-s))}})},1)});window.cancelIdleCallback||(window.cancelIdleCallback=function(i){clearTimeout(i)});</script><script src="/pmo-banner/banner.js"></script></head>';
 
 sub_filter_once on;
