@@ -20,6 +20,9 @@
 	reverse_proxy /{$BUCKET_NAME}/* plane-minio:9000
 	reverse_proxy /{$BUCKET_NAME} plane-minio:9000
 
+	# BMC Lucy MCP server (https://github.com/Kesaramb/BMC-Lucy), served at /lucy/mcp
+	reverse_proxy /lucy/* {$BMC_LUCY_UPSTREAM:bmc-lucy:8000}
+
 	reverse_proxy /* web:3000
 }
 

@@ -151,6 +151,17 @@ services:
       MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID}
       MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY}
 
+  # BMC Lucy MCP server, routed by the proxy at /lucy/mcp
+  bmc-lucy:
+    container_name: bmc-lucy
+    build:
+      context: https://github.com/Kesaramb/BMC-Lucy.git#${BMC_LUCY_REF:-main}
+    restart: always
+    environment:
+      LUCY_MCP_PATH: /lucy/mcp
+      LUCY_MCP_TOKEN: ${LUCY_MCP_TOKEN:-}
+      LUCY_ALLOWED_HOSTS: ${LUCY_ALLOWED_HOSTS:-}
+
   # Comment this if you already have a reverse proxy running
   proxy:
     container_name: proxy
