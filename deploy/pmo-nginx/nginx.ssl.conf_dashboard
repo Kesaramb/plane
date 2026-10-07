@@ -1,0 +1,13 @@
+location ^~ /dashboard/ {
+    alias /home/admin/web/pmo.gobrandfactory.com/public_html/dashboard/;
+    index index.html;
+    # data.js is rewritten in place by the refresh job. Never serve a stored copy,
+    # and opt out of the global open_file_cache, which otherwise keeps the old
+    # file handle alive for up to 60s and makes a manual refresh look broken.
+    open_file_cache off;
+    expires off;
+    etag off;
+    add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+    auth_basic "Manager Dashboard";
+    auth_basic_user_file /home/admin/conf/web/pmo.gobrandfactory.com/.dashboard_htpasswd;
+}
