@@ -1,0 +1,35 @@
+# ---- Claude connector: MCP endpoint + OAuth authorization server ----
+# /authorize is gated by the dashboard login, so approving a connection
+# requires the shared admin credential. Machine-to-machine OAuth endpoints
+# (/token, /register, discovery) must stay open for Anthropic's servers.
+
+location = /authorize {
+    auth_basic "PMO Manager Dashboard";
+    auth_basic_user_file /home/admin/conf/web/pmo.gobrandfactory.com/.dashboard_htpasswd;
+    proxy_pass http://127.0.0.1:8792;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location = /token   { proxy_pass http://127.0.0.1:8792; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+location = /register { proxy_pass http://127.0.0.1:8792; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
+
+location = /.well-known/oauth-authorization-server {
+    proxy_pass http://127.0.0.1:8792; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme;
+}
+location ^~ /.well-known/oauth-protected-resource {
+    proxy_pass http://127.0.0.1:8792; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location ^~ /mcp {
+    proxy_pass http://127.0.0.1:8792;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+}
