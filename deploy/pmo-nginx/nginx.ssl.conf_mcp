@@ -1,14 +1,58 @@
 # ---- Claude connector: MCP endpoint + OAuth authorization server ----
-# /authorize is gated by the dashboard login, so approving a connection
-# requires the shared admin credential. Machine-to-machine OAuth endpoints
-# (/token, /register, discovery) must stay open for Anthropic's servers.
+# Installed at: /home/admin/conf/web/pmo.gobrandfactory.com/nginx.ssl.conf_mcp
+#
+# /authorize approves any request that reaches it, so this file decides who may connect.
+# It asks Plane: signed in as an instance admin, and the approval code headed for Claude?
+# The policy lives in apps/api/plane/app/views/pmo_connector.py; nginx only routes
+# the three answers —
+#   200  approved: through to the MCP server, which redirects back to Claude
+#   401  not signed in: Plane's sign-in, then back here (see the resume hop in
+#        nginx.ssl.conf_landing, location = /)
+#   403  not an admin, or a redirect_uri other than Claude's: a page saying which
+#
+# This replaced basic auth with the shared dashboard password: a browser popup with no
+# relation to anyone's Plane account.
+#
+# Machine-to-machine OAuth endpoints (/token, /register, discovery) must stay open:
+# Anthropic's servers call them directly and cannot present a browser session.
 
 location = /authorize {
-    auth_basic "PMO Manager Dashboard";
-    auth_basic_user_file /home/admin/conf/web/pmo.gobrandfactory.com/.dashboard_htpasswd;
+    auth_request /_pmo_connector_gate;
+    error_page 401 = @pmo_connector_sign_in;
+    error_page 403 = @pmo_connector_denied;
     proxy_pass http://127.0.0.1:8792;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+# The subrequest carries the browser's cookies (so Plane sees the session) and the
+# original /authorize URI (so Plane can check redirect_uri). No body: it is a GET.
+location = /_pmo_connector_gate {
+    internal;
+    proxy_pass http://127.0.0.1:4100/api/pmo/connector/gate/;
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Original-URI $request_uri;
+}
+
+# Named locations cannot proxy_pass to a URI, hence the rewrite. $request_uri still holds
+# the original /authorize request after it; rewrite only changes $uri.
+location @pmo_connector_sign_in {
+    rewrite ^ /api/pmo/connector/sign-in/? break;
+    proxy_pass http://127.0.0.1:4100;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Original-URI $request_uri;
+}
+
+location @pmo_connector_denied {
+    rewrite ^ /api/pmo/connector/denied/? break;
+    proxy_pass http://127.0.0.1:4100;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Original-URI $request_uri;
 }
 
 location = /token   { proxy_pass http://127.0.0.1:8792; proxy_set_header Host $host; proxy_set_header X-Forwarded-Proto $scheme; }
