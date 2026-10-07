@@ -1,3 +1,15 @@
+# Manager dashboard: static page + data.js.
+# Installed at: /home/admin/conf/web/pmo.gobrandfactory.com/nginx.ssl.conf_dashboard
+#
+# Two ways in, either is enough (satisfy any):
+#   people    signed in to Plane as an instance admin — asked of Plane via auth_request,
+#             policy in apps/api/plane/app/views/pmo_connector.py (dashboard_gate)
+#   machines  the shared password, which both MCP servers send up front
+#
+# $pmo_dashboard_basic (plane_pmo.conf) switches basic auth off unless the request already
+# carries a Basic header, so a browser is never challenged and never sees the popup. A
+# refusal goes to Plane's sign-in (401) or a page saying why (403) — the named locations
+# @pmo_connector_sign_in / @pmo_connector_denied, defined in nginx.ssl.conf_mcp.
 location ^~ /dashboard/ {
     alias /home/admin/web/pmo.gobrandfactory.com/public_html/dashboard/;
     index index.html;
@@ -8,6 +20,21 @@ location ^~ /dashboard/ {
     expires off;
     etag off;
     add_header Cache-Control "no-store, no-cache, must-revalidate" always;
-    auth_basic "Manager Dashboard";
+
+    satisfy any;
+    auth_basic $pmo_dashboard_basic;
     auth_basic_user_file /home/admin/conf/web/pmo.gobrandfactory.com/.dashboard_htpasswd;
+    auth_request /_pmo_dashboard_gate;
+    error_page 401 = @pmo_connector_sign_in;
+    error_page 403 = @pmo_connector_denied;
+}
+
+location = /_pmo_dashboard_gate {
+    internal;
+    proxy_pass http://127.0.0.1:4100/api/pmo/dashboard/gate/;
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Original-URI $request_uri;
 }

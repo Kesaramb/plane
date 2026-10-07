@@ -1,7 +1,29 @@
+# Manager dashboard admin API (admin_api.py on 127.0.0.1:8791).
+# Installed at: /home/admin/conf/web/pmo.gobrandfactory.com/nginx.ssl.conf_dashboardapi
+#
+# Same two ways in as the dashboard page (see nginx.ssl.conf_dashboard): a Plane admin
+# session, or the shared password the MCP servers send. These are fetch() calls from the
+# dashboard page, so a refusal is JSON, not a redirect to a sign-in page the script
+# would then try to parse.
 location ^~ /dashboard/api/ {
-    auth_basic "Manager Dashboard";
+    satisfy any;
+    auth_basic $pmo_dashboard_basic;
     auth_basic_user_file /home/admin/conf/web/pmo.gobrandfactory.com/.dashboard_htpasswd;
+    auth_request /_pmo_dashboard_gate;
+    error_page 401 = @pmo_dashboard_api_401;
+    error_page 403 = @pmo_dashboard_api_403;
+
     proxy_pass http://127.0.0.1:8791;
     proxy_set_header Host $host;
     proxy_read_timeout 30s;
+}
+
+location @pmo_dashboard_api_401 {
+    default_type application/json;
+    return 401 '{"error": "Not signed in to PMO. Reload the dashboard to sign in again."}';
+}
+
+location @pmo_dashboard_api_403 {
+    default_type application/json;
+    return 403 '{"error": "This Plane account is not a PMO admin."}';
 }

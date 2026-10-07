@@ -9,11 +9,10 @@ location = / {
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Forwarded-Host $host;
     proxy_set_header X-Forwarded-Port $server_port;
-    # Back from signing in to connect Claude (see nginx.ssl.conf_mcp). Plane's sign-in
-    # ends at /?next_path=<path> and leaves the app to navigate there in the browser,
-    # and the app would route /api/... as one of its own pages and 404. Hop server-side.
-    # Must come before the hand-off below, which would serve the app for this request.
-    if ($arg_next_path = "/api/pmo/connector/resume/") {
+    # Back from signing in to the Claude connector or the dashboard: hop to resume. Only
+    # when signed in ($pmo_resume_hop, plane_pmo.conf) — signed out, this same URL is the
+    # sign-in page. Must come before the hand-off below, which would serve the app.
+    if ($pmo_resume_hop) {
         return 302 /api/pmo/connector/resume/;
     }
     # hand off to Plane for a session OR any auth flow param — see plane_pmo.conf
