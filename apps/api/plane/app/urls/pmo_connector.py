@@ -8,6 +8,7 @@ from django.urls import path
 
 from plane.app.views.pmo_connector import (
     connector_gate,
+    consent,
     dashboard_gate,
     denied,
     resume,
@@ -16,6 +17,7 @@ from plane.app.views.pmo_connector import (
 
 urlpatterns = [
     path("pmo/connector/gate/", connector_gate, name="pmo-connector-gate"),
+    path("pmo/connector/consent/", consent, name="pmo-connector-consent"),
     path("pmo/dashboard/gate/", dashboard_gate, name="pmo-dashboard-gate"),
     path("pmo/connector/sign-in/", sign_in, name="pmo-sign-in"),
     path("pmo/connector/resume/", resume, name="pmo-resume"),
