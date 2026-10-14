@@ -142,6 +142,25 @@ class Project(BaseModel):
 
     FORBIDDEN_IDENTIFIER_CHARS_PATTERN = r"^.*[&+,:;$^}{*=?@#|'<>.()%!-].*$"
 
+    # Fork change: names get their own, much narrower rule.
+    #
+    # Upstream applied the identifier pattern above to names too (c4b3d5246, #8529, which
+    # gives no reason). It refused hyphens, full stops and brackets — "Banking-lk",
+    # "Vibehosting.co.uk", "Client (Phase 1)" — and the create form reports that only as
+    # "Something went wrong". The trailing "-" in that class is not even in the PR's own
+    # list of banned characters. The pattern stays strict for identifiers, which are
+    # embedded in references like ABC-123.
+    #
+    # A name is display text, and everything that shows one escapes it: Plane's React UI,
+    # Django's email templates, and the PMO dashboard and Quest board (both escape & < > " ').
+    # So only two things are refused:
+    #   < or > anywhere   no consumer, including webhooks and integrations nobody has
+    #                     audited, ever receives markup in a name
+    #   a leading = + - @ makes a spreadsheet cell a formula. The CSV export neutralises
+    #                     that (utils/csv_utils.py); the XLSX export does not, and openpyxl
+    #                     stores any string starting with "=" as a live formula.
+    FORBIDDEN_NAME_PATTERN = r"^[=+@-]|[<>]"
+
     class Meta:
         unique_together = [
             ["identifier", "workspace", "deleted_at"],
