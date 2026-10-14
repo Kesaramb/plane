@@ -195,6 +195,17 @@ class XLSXFormatter(BaseFormatter):
             return json.dumps(value)
         return value
 
+    def _store_as_text(self, cell) -> None:
+        """Keep a formula-like string as plain text instead of a live formula.
+
+        Uses the CSV trigger list, but rather than prepending a literal apostrophe
+        (which XLSX shows in the cell) it sets Excel's quote-prefix flag, exactly
+        what Excel stores when someone types a leading apostrophe.
+        """
+        if isinstance(cell.value, str) and sanitize_csv_value(cell.value) != cell.value:
+            cell.data_type = "s"
+            cell.quotePrefix = True
+
     def encode(self, data: List[Dict]) -> bytes:
         """Encode data to XLSX bytes."""
         wb = Workbook()
@@ -224,6 +235,8 @@ class XLSXFormatter(BaseFormatter):
         # Write data rows
         for row in data:
             ws.append([self._format_value(row.get(key, "")) for key in fieldnames])
+            for cell in ws[ws.max_row]:
+                self._store_as_text(cell)
 
         output = BytesIO()
         wb.save(output)
