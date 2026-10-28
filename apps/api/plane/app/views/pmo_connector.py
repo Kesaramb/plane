@@ -100,10 +100,19 @@ COOKIE_PATH = "/api/pmo/connector/"
 RESUME_SECONDS = 600
 SIGN_IN_URL = "/?next_path=" + RESUME_PATH
 
+# The member connector's approval page (views/pmo_member_connector.py) borrows this
+# sign-in round trip, so resume may send a browser back there too.
+MEMBER_APPROVE_PATH = "/api/pmo/member/approve/"
+
 
 def _resumable(uri):
     """Same-host paths this flow may send a browser back to. Never anything absolute."""
-    return uri.startswith("/authorize?") or uri == "/dashboard" or uri.startswith("/dashboard/")
+    return (
+        uri.startswith("/authorize?")
+        or uri == "/dashboard"
+        or uri.startswith("/dashboard/")
+        or uri.startswith(MEMBER_APPROVE_PATH + "?")
+    )
 
 
 def _original(request):
@@ -213,6 +222,11 @@ def sign_in(request):
         return _page(400, "Nothing to resume", "<p>Start again from Claude or the dashboard.</p>")
     if request.user.is_authenticated:
         return _not_admin_page(request, uri) if not _is_admin(request) else HttpResponseRedirect(uri)
+    return _sign_in_then(uri)
+
+
+def _sign_in_then(uri):
+    """Off to Plane's sign-in, with uri waiting in a cookie for resume to return to."""
     response = HttpResponseRedirect(SIGN_IN_URL)
     response.set_cookie(
         RESUME_COOKIE,

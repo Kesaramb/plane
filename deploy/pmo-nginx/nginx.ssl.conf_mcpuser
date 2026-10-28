@@ -1,4 +1,4 @@
-# Per-member Claude connector — the personal MCP (pmo_mcp_user.py) on 127.0.0.1:8793.
+# Member connector — the personal MCP (pmo_mcp_user.py, hosted mode) on 127.0.0.1:8793.
 #
 # Installed at: /home/admin/conf/web/my.gobrandfactory.com/nginx.ssl.conf_mcpuser
 #
@@ -8,20 +8,72 @@
 # relative to the issuer, so a second connector cannot share those paths — it needs its
 # own origin. Hence my.gobrandfactory.com rather than a sub-path.
 #
-# WHY A DIFFERENT PASSWORD FILE
-# /authorize is what approves a connection, so whoever can pass it can bind a connector
-# to whatever Plane token this service holds. It is gated by .mcpuser_htpasswd — the
-# member's own login — deliberately NOT the shared dashboard credential, which would let
-# any member approve a connector for any other, and would also hand them the dashboard.
+# WHO MAY CONNECT
+# Anyone with a Plane account, as themselves. /authorize asks Plane (auth_request) whether
+# this browser carries a fresh approval for this exact request. Without one it goes to
+# pmo.gobrandfactory.com to sign in and say yes, and comes back through landing/. The flow
+# and why it is shaped this way are at the top of
+# apps/api/plane/app/views/pmo_member_connector.py.
+#
+# On 200, Plane names the person in X-PMO-Member-Id and nginx hands that to the MCP server.
+# It is set here, so whatever a client sent under that name is replaced; the MCP server
+# reads it nowhere but /authorize. Nothing secret passes through nginx: the MCP server
+# fetches the person's Plane token from Plane itself, over loopback.
+#
+# This replaced basic auth with .mcpuser_htpasswd, which decided who could connect but then
+# bound every connection to the one Plane token the service held.
+#
+# Plane is reached with Host pmo.gobrandfactory.com: its ALLOWED_HOSTS need not list this
+# host, and none of the views used from here depend on which host was asked.
 #
 # Machine-to-machine endpoints (/token, /register, discovery) must stay open: Anthropic's
 # servers call them directly and cannot present a browser login.
 
 location = /authorize {
-    auth_basic "PMO — my work";
-    auth_basic_user_file /home/admin/conf/web/pmo.gobrandfactory.com/.mcpuser_htpasswd;
+    auth_request /_pmo_member_gate;
+    auth_request_set $pmo_member_id $upstream_http_x_pmo_member_id;
+    error_page 401 = @pmo_member_start;
+    error_page 403 = @pmo_member_denied;
     proxy_pass http://127.0.0.1:8793;
     proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-PMO-Member-Id $pmo_member_id;
+}
+
+# The subrequest carries the browser's cookies (the approval) and the original /authorize
+# URI (so Plane can check it is this exact request, headed for an app it trusts).
+location = /_pmo_member_gate {
+    internal;
+    proxy_pass http://127.0.0.1:4100/api/pmo/member/gate/;
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
+    proxy_set_header Host pmo.gobrandfactory.com;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Original-URI $request_uri;
+}
+
+# Named locations cannot proxy_pass to a URI, hence the rewrite. $request_uri still holds
+# the original /authorize request after it; rewrite only changes $uri.
+location @pmo_member_start {
+    rewrite ^ /api/pmo/member/start/? break;
+    proxy_pass http://127.0.0.1:4100;
+    proxy_set_header Host pmo.gobrandfactory.com;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Original-URI $request_uri;
+}
+
+location @pmo_member_denied {
+    rewrite ^ /api/pmo/member/denied/? break;
+    proxy_pass http://127.0.0.1:4100;
+    proxy_set_header Host pmo.gobrandfactory.com;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Original-URI $request_uri;
+}
+
+# Back from Allow on pmo.: the approval becomes a cookie that /authorize on this host sees.
+location = /api/pmo/member/landing/ {
+    proxy_pass http://127.0.0.1:4100;
+    proxy_set_header Host pmo.gobrandfactory.com;
     proxy_set_header X-Forwarded-Proto $scheme;
 }
 
