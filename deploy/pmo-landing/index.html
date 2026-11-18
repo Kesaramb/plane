@@ -81,6 +81,16 @@
   .card.hot h3{color:var(--navy)}
   .card.hot p{color:rgba(20,19,56,.72)}
 
+  /* connect: steps, and the URL and command to copy */
+  .card ol{margin-top:9px;padding-left:16px;color:var(--muted);font-size:14px;line-height:1.5}
+  .card li+li{margin-top:6px}
+  .card b{color:var(--paper);font-weight:600}
+  .card.hot b{color:var(--navy)}
+  #connect code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;color:var(--paper);
+    background:rgba(255,255,255,.07);border:1px solid var(--line);border-radius:9px;padding:0 7px;
+    overflow-wrap:anywhere}
+  #connect code.cmd{display:block;padding:9px 12px}
+
   /* closing */
   .close{margin-top:26px;text-align:center;background:var(--yellow);color:var(--navy);border-radius:28px;padding:60px 24px}
   .close h2{font-size:clamp(30px,5vw,50px);font-weight:600;letter-spacing:-.01em;color:var(--navy)}
@@ -139,6 +149,36 @@
       <div class="card reveal" style="animation-delay:.2s"><div class="num">06</div><h3>Reduce waste.</h3><p>If it&rsquo;s not moving the work, it goes.</p></div>
       <div class="card reveal hot span-2" style="animation-delay:.24s"><div class="num">07</div><h3>Give ownership to the team.</h3><p>The people doing the work make the calls.</p></div>
       <div class="card reveal hot span-2" style="animation-delay:.28s"><div class="num">08</div><h3>Treat the process as a tool, not a religion.</h3><p>Rules serve the work &mdash; never the other way round.</p></div>
+    </div>
+  </section>
+
+  <section class="section" id="connect">
+    <div class="section-head">
+      <h2>Plug Project HQ into<br/>Claude or ChatGPT.</h2>
+      <p>Ask who&rsquo;s overloaded, what&rsquo;s overdue or what moved this week, in plain words, straight from the board. For PMO admins. Connector URL: <code>https://pmo.gobrandfactory.com/mcp</code></p>
+    </div>
+    <div class="grid">
+      <div class="card reveal span-2"><div class="num">01</div><h3>Claude, on the web or desktop</h3>
+        <ol>
+          <li>Open <b>Customize &rarr; Connectors</b>, then <b>Add &rarr; Add custom connector</b>. On a Team or Enterprise plan, an owner adds it once under <b>Organization settings &rarr; Connectors</b>.</li>
+          <li>Name it <b>PMO</b> and paste the connector URL.</li>
+          <li>Click <b>Connect</b>, sign in to Project HQ, then click <b>Allow</b>.</li>
+        </ol>
+      </div>
+      <div class="card reveal span-2" style="animation-delay:.04s"><div class="num">02</div><h3>ChatGPT</h3>
+        <ol>
+          <li>Open <b>Plugins</b>, click <b>+</b>, then <b>Add custom MCP server</b>. On a Business or Enterprise workspace, an admin may need to allow custom servers first.</li>
+          <li>Name it <b>PMO</b>, paste the connector URL and choose <b>OAuth</b>.</li>
+          <li>Accept the warning and create it, then sign in to Project HQ and click <b>Allow</b>.</li>
+        </ol>
+      </div>
+      <div class="card reveal span-2" style="animation-delay:.08s"><div class="num">03</div><h3>Claude Code</h3>
+        <p>Already connected on claude.ai? It&rsquo;s there too when you&rsquo;re signed in with the same account. Otherwise run this, then type <code>/mcp</code> in Claude Code to sign in:</p>
+        <p><code class="cmd">claude mcp add --transport http pmo https://pmo.gobrandfactory.com/mcp</code></p>
+      </div>
+      <div class="card reveal hot span-2" style="animation-delay:.12s"><div class="num">04</div><h3>Admins only, and only you.</h3>
+        <p>It reads every workspace and can change anyone&rsquo;s board, so only PMO admins can connect. Click <b>Allow</b> only for a connection you just started yourself, never from a link someone sent you.</p>
+      </div>
     </div>
   </section>
 
